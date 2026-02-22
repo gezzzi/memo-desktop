@@ -1,5 +1,5 @@
 @echo off
-title Memo Desktop
+title Memo
 cd /d "%~dp0"
 
 REM Start the dev server in the background
