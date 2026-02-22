@@ -194,7 +194,7 @@ export default function MemoEditor({
               value={body}
               onChange={(e) => onChange("body", e.target.value)}
               placeholder="メモを入力..."
-              className="w-full flex-1 px-5 py-3.5 bg-transparent outline-none resize-none text-[15px] leading-relaxed placeholder:text-muted/50"
+              className="w-full flex-1 px-5 py-3.5 bg-transparent outline-none resize-none text-base leading-relaxed placeholder:text-muted/50"
             />
           </div>
         </div>
@@ -261,7 +261,7 @@ export default function MemoEditor({
           )}
           {/* Body (read-only) */}
           <div className="flex-1 overflow-y-auto">
-            <p className="px-5 py-3.5 text-[15px] leading-relaxed text-foreground/80 whitespace-pre-wrap">
+            <p className="px-5 py-3.5 text-base leading-relaxed text-foreground/80 whitespace-pre-wrap">
               {body || <span className="text-muted italic">内容なし</span>}
             </p>
           </div>
