@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git:*)",
+      "Bash(cd:*)",
+      "mcp__chrome-devtools__navigate_page",
+      "Bash(curl:*)",
+      "Bash(powershell:*)",
+      "Bash(taskkill:*)",
+      "Bash(tail:*)",
+      "Bash(head:*)",
+      "Bash(cd /c/Users/user/dev/memo-desktop && npm run build 2>&1)"
+    ]
+  }
+}
