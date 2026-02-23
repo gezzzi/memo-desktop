@@ -24,6 +24,7 @@ interface MemoListProps {
   onDeleteFolder: (path: string, name: string) => void;
   onNewMemo: (folder: string) => void;
   onNewFolder: (parentPath: string) => void;
+  onRenameFolder: (oldPath: string, newName: string) => void;
 }
 
 export default function MemoList({
@@ -38,12 +39,16 @@ export default function MemoList({
   onDeleteFolder,
   onNewMemo,
   onNewFolder,
+  onRenameFolder,
 }: MemoListProps) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [dragOverPath, setDragOverPath] = useState<string | null>(null);
   const [contextMenu, setContextMenu] = useState<ContextMenu | null>(null);
   const [menuPos, setMenuPos] = useState<{ left: number; top: number }>({ left: 0, top: 0 });
   const menuRef = useRef<HTMLDivElement>(null);
+  const [renamingFolder, setRenamingFolder] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState("");
+  const renameInputRef = useRef<HTMLInputElement>(null);
 
   // Position the menu after it renders, adjusting for screen edges
   const adjustMenuPosition = useCallback(() => {
@@ -87,6 +92,21 @@ export default function MemoList({
       else next.add(path);
       return next;
     });
+  };
+
+  const commitRename = () => {
+    if (!renamingFolder) return;
+    const newName = renameValue.trim();
+    if (newName && newName !== renamingFolder.split("/").pop()) {
+      onRenameFolder(renamingFolder, newName);
+    }
+    setRenamingFolder(null);
+    setRenameValue("");
+  };
+
+  const cancelRename = () => {
+    setRenamingFolder(null);
+    setRenameValue("");
   };
 
   const getChildFolderNames = (parentPath: string): string[] => {
@@ -152,7 +172,7 @@ export default function MemoList({
           onDrop={(e) => handleDrop(e, path)}
           onClick={() => toggleExpanded(path)}
           onContextMenu={(e) => openContextMenu(e, "folder", path, name)}
-          className={`w-full flex items-center gap-1 h-[22px] pr-2 text-[13px] cursor-pointer select-none ${
+          className={`w-full flex items-center gap-1 h-7 pr-2 text-xs cursor-pointer select-none ${
             dragOverPath === path
               ? "bg-foreground/10"
               : "hover:bg-foreground/[0.06]"
@@ -169,27 +189,45 @@ export default function MemoList({
             strokeWidth="2.5"
             strokeLinecap="round"
             strokeLinejoin="round"
-            className={`shrink-0 text-foreground/50 transition-transform duration-100 ${
+            className={`shrink-0 text-foreground/90 transition-transform duration-100 ${
               isOpen ? "rotate-90" : ""
             }`}
           >
             <polyline points="9 18 15 12 9 6" />
           </svg>
-          {/* Folder icon */}
+          {/* Folder icon (filled) */}
           <svg
-            width="14"
-            height="14"
+            width="12"
+            height="12"
             viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            className="shrink-0 text-muted/60"
+            fill="currentColor"
+            stroke="none"
+            className="shrink-0 text-foreground/90"
           >
             <path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2Z" />
           </svg>
-          <span className="truncate text-foreground/80">{name}</span>
+          {renamingFolder === path ? (
+            <input
+              ref={renameInputRef}
+              type="text"
+              value={renameValue}
+              onChange={(e) => setRenameValue(e.target.value)}
+              onBlur={commitRename}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  commitRename();
+                } else if (e.key === "Escape") {
+                  cancelRename();
+                }
+              }}
+              onClick={(e) => e.stopPropagation()}
+              className="w-full min-w-0 px-0.5 py-0 text-xs bg-surface ring-1 ring-border-strong rounded outline-none text-foreground"
+              autoFocus
+            />
+          ) : (
+            <span className="truncate text-foreground">{name}</span>
+          )}
         </div>
 
         {/* Expanded children */}
@@ -225,24 +263,24 @@ export default function MemoList({
         }}
         onClick={() => onSelect(memo.id)}
         onContextMenu={(e) => openContextMenu(e, "memo", memo.id, memo.title)}
-        className={`w-full flex items-center gap-1 h-[22px] pr-2 text-[13px] cursor-pointer select-none ${
+        className={`w-full flex items-center gap-1 h-7 pr-2 text-xs cursor-pointer select-none ${
           isSelected
             ? "bg-foreground/10 text-foreground"
-            : "hover:bg-foreground/[0.06] text-foreground/80"
+            : "hover:bg-foreground/[0.06] text-foreground"
         }`}
         style={{ paddingLeft: 8 + depth * 16 + 14 }}
       >
         {/* File icon */}
         <svg
-          width="14"
-          height="14"
+          width="12"
+          height="12"
           viewBox="0 0 24 24"
           fill="none"
           stroke="currentColor"
           strokeWidth="2"
           strokeLinecap="round"
           strokeLinejoin="round"
-          className="shrink-0 text-muted/60"
+          className="shrink-0 text-foreground"
         >
           <path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z" />
           <polyline points="14 2 14 8 20 8" />
@@ -257,7 +295,7 @@ export default function MemoList({
   if (memos.length === 0 && allFolderPaths.length === 0) {
     return (
       <div
-        className="px-3 py-6 text-[13px] text-muted min-h-full"
+        className="px-3 py-6 text-xs text-muted min-h-full"
         onContextMenu={(e) => openContextMenu(e, "background", "", "")}
       >
         メモがありません
@@ -322,13 +360,32 @@ export default function MemoList({
             }}
             className="w-full text-left px-3 py-1.5 text-xs text-foreground/80 hover:bg-foreground/5 flex items-center gap-2 transition-colors"
           >
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" stroke="none">
               <path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2Z" />
-              <line x1="12" y1="10" x2="12" y2="16" />
-              <line x1="9" y1="13" x2="15" y2="13" />
             </svg>
             新規フォルダ
           </button>
+          {contextMenu.type === "folder" && (
+            <>
+              {/* Rename folder */}
+              <button
+                onClick={() => {
+                  const path = contextMenu.id;
+                  const currentName = path.split("/").pop() || path;
+                  setRenamingFolder(path);
+                  setRenameValue(currentName);
+                  setContextMenu(null);
+                }}
+                className="w-full text-left px-3 py-1.5 text-xs text-foreground/80 hover:bg-foreground/5 flex items-center gap-2 transition-colors"
+              >
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M12 20h9" />
+                  <path d="M16.376 3.622a1 1 0 0 1 3.002 3.002L7.368 18.635a2 2 0 0 1-.855.506l-2.872.838a.5.5 0 0 1-.62-.62l.838-2.872a2 2 0 0 1 .506-.854z" />
+                </svg>
+                名前を変更
+              </button>
+            </>
+          )}
           {contextMenu.type !== "background" && (
             <>
               {/* Separator */}

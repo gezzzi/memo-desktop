@@ -7,6 +7,8 @@ import MemoEditor from "./components/MemoEditor";
 import ThemeToggle from "./components/ThemeToggle";
 import DeleteConfirmDialog from "./components/DeleteConfirmDialog";
 import ScratchPad from "./components/ScratchPad";
+import { useAutoSaveMemo } from "./hooks/useAutoSaveMemo";
+import { useUndoRedo } from "./hooks/useUndoRedo";
 
 type FolderView =
   | { mode: "all" }
@@ -14,15 +16,6 @@ type FolderView =
 
 export default function Home() {
   const [memos, setMemos] = useState<MemoSummary[]>([]);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [title, setTitle] = useState("");
-  const [body, setBody] = useState("");
-  const [folder, setFolder] = useState("");
-  const [originalTitle, setOriginalTitle] = useState("");
-  const [originalBody, setOriginalBody] = useState("");
-  const [originalFolder, setOriginalFolder] = useState("");
-  const [isNew, setIsNew] = useState(false);
-  const [editing, setEditing] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<{
     type: "memo" | "folder";
     id: string;
@@ -49,6 +42,31 @@ export default function Home() {
     setMemos(data.memos);
     setLoading(false);
   }, []);
+
+  // Auto-save hook
+  const autoSave = useAutoSaveMemo({ onSaved: fetchMemos });
+
+  // Undo/Redo hook
+  const undoRedo = useUndoRedo();
+
+  // Debounced snapshot for undo history
+  const snapshotTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const skipSnapshotRef = useRef(false);
+
+  const scheduleSnapshot = useCallback(() => {
+    if (skipSnapshotRef.current) {
+      skipSnapshotRef.current = false;
+      return;
+    }
+    if (snapshotTimerRef.current) clearTimeout(snapshotTimerRef.current);
+    snapshotTimerRef.current = setTimeout(() => {
+      undoRedo.pushSnapshot({
+        title: autoSave.title,
+        body: autoSave.body,
+        folder: autoSave.folder,
+      });
+    }, 500);
+  }, [undoRedo, autoSave.title, autoSave.body, autoSave.folder]);
 
   useEffect(() => {
     fetchMemos();
@@ -147,108 +165,64 @@ export default function Home() {
   // --- Handlers ---
 
   const handleSelect = async (id: string) => {
+    await autoSave.selectMemo(id);
+    // Reset undo history for the new memo — read the values after selectMemo finishes
+    // We need to fetch the memo data to initialize undo
     const res = await fetch(`/api/memos/${id}`);
-    if (!res.ok) return;
-    const memo: Memo = await res.json();
-    setSelectedId(id);
-    setTitle(memo.title);
-    setBody(memo.body);
-    setFolder(memo.folder);
-    setOriginalTitle(memo.title);
-    setOriginalBody(memo.body);
-    setOriginalFolder(memo.folder);
-    setIsNew(false);
-    setEditing(false);
-  };
-
-  const handleNew = () => {
-    setSelectedId(null);
-    setTitle("新規ファイル");
-    setBody("");
-    setFolder("");
-    setOriginalTitle("");
-    setOriginalBody("");
-    setOriginalFolder("");
-    setIsNew(true);
-    setEditing(true);
-  };
-
-  const handleNewInFolder = (folderPath: string) => {
-    setSelectedId(null);
-    setTitle("新規ファイル");
-    setBody("");
-    setFolder(folderPath);
-    setOriginalTitle("");
-    setOriginalBody("");
-    setOriginalFolder("");
-    setIsNew(true);
-    setEditing(true);
-  };
-
-  const handleEdit = () => {
-    setOriginalTitle(title);
-    setOriginalBody(body);
-    setOriginalFolder(folder);
-    setEditing(true);
-  };
-
-  const handleCancel = () => {
-    if (isNew) {
-      setIsNew(false);
-      setEditing(false);
-    } else {
-      setTitle(originalTitle);
-      setBody(originalBody);
-      setFolder(originalFolder);
-      setEditing(false);
+    if (res.ok) {
+      const memo: Memo = await res.json();
+      undoRedo.reset({ title: memo.title, body: memo.body, folder: memo.folder });
     }
+  };
+
+  const handleNew = async () => {
+    await autoSave.createNewMemo();
+    undoRedo.reset({ title: "新規ファイル", body: "", folder: "" });
+  };
+
+  const handleNewInFolder = async (folderPath: string) => {
+    await autoSave.createNewMemo(folderPath);
+    undoRedo.reset({ title: "新規ファイル", body: "", folder: folderPath });
   };
 
   const handleChange = (field: "title" | "body", value: string) => {
-    if (field === "title") setTitle(value);
-    else setBody(value);
+    if (field === "title") autoSave.setTitle(value);
+    else autoSave.setBody(value);
+    scheduleSnapshot();
   };
 
-  const handleSave = async () => {
-    const saveTitle = title.trim() || "新規ファイル";
+  const handleFolderChange = (value: string) => {
+    autoSave.setFolder(value);
+    scheduleSnapshot();
+  };
 
-    if (isNew) {
-      const res = await fetch("/api/memos", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title: saveTitle, body, folder }),
-      });
-      if (res.ok) {
-        const memo: Memo = await res.json();
-        setSelectedId(memo.id);
-        setTitle(saveTitle);
-        setIsNew(false);
-        setEditing(false);
-        setOriginalTitle(saveTitle);
-        setOriginalBody(body);
-        setOriginalFolder(folder);
-        await fetchMemos();
-      }
-    } else if (selectedId) {
-      const res = await fetch(`/api/memos/${selectedId}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title: saveTitle, body, folder }),
-      });
-      if (res.ok) {
-        setTitle(saveTitle);
-        setEditing(false);
-        setOriginalTitle(saveTitle);
-        setOriginalBody(body);
-        setOriginalFolder(folder);
-        await fetchMemos();
-      }
+  const handleUndo = useCallback(() => {
+    const prev = undoRedo.undo();
+    if (prev) {
+      skipSnapshotRef.current = true;
+      autoSave.setTitle(prev.title);
+      skipSnapshotRef.current = true;
+      autoSave.setBody(prev.body);
+      skipSnapshotRef.current = true;
+      autoSave.setFolder(prev.folder);
     }
-  };
+  }, [undoRedo, autoSave]);
+
+  const handleRedo = useCallback(() => {
+    const next = undoRedo.redo();
+    if (next) {
+      skipSnapshotRef.current = true;
+      autoSave.setTitle(next.title);
+      skipSnapshotRef.current = true;
+      autoSave.setBody(next.body);
+      skipSnapshotRef.current = true;
+      autoSave.setFolder(next.folder);
+    }
+  }, [undoRedo, autoSave]);
 
   const handleDelete = () => {
-    if (selectedId) {
-      setDeleteTarget({ type: "memo", id: selectedId, name: title });
+    if (autoSave.selectedId) {
+      setDeleteTarget({ type: "memo", id: autoSave.selectedId, name: autoSave.title });
     }
   };
 
@@ -266,13 +240,8 @@ export default function Home() {
     if (deleteTarget.type === "memo") {
       const res = await fetch(`/api/memos/${deleteTarget.id}`, { method: "DELETE" });
       if (res.ok) {
-        if (selectedId === deleteTarget.id) {
-          setSelectedId(null);
-          setTitle("");
-          setBody("");
-          setFolder("");
-          setIsNew(false);
-          setEditing(false);
+        if (autoSave.selectedId === deleteTarget.id) {
+          autoSave.clearSelection();
         }
         await fetchMemos();
       }
@@ -284,13 +253,8 @@ export default function Home() {
       );
       for (const m of affectedMemos) {
         await fetch(`/api/memos/${m.id}`, { method: "DELETE" });
-        if (selectedId === m.id) {
-          setSelectedId(null);
-          setTitle("");
-          setBody("");
-          setFolder("");
-          setIsNew(false);
-          setEditing(false);
+        if (autoSave.selectedId === m.id) {
+          autoSave.clearSelection();
         }
       }
       const updated = customFolders.filter(
@@ -317,9 +281,8 @@ export default function Home() {
       }),
     });
     if (res.ok) {
-      if (selectedId === memoId) {
-        setFolder(targetFolder);
-        setOriginalFolder(targetFolder);
+      if (autoSave.selectedId === memoId) {
+        autoSave.updateFolderSilently(targetFolder);
       }
     }
   };
@@ -493,6 +456,48 @@ export default function Home() {
     }
   };
 
+  // Rename folder
+  const handleRenameFolder = async (oldPath: string, newName: string) => {
+    const segments = oldPath.split("/");
+    segments[segments.length - 1] = newName;
+    const newPath = segments.join("/");
+
+    // Prevent rename to existing folder
+    if (allFolderPaths.includes(newPath)) return;
+
+    // Update memos whose folder matches or is nested under oldPath
+    const affectedMemos = memos.filter(
+      (m) => m.folder === oldPath || m.folder.startsWith(oldPath + "/")
+    );
+    for (const m of affectedMemos) {
+      const newFolder = newPath + m.folder.slice(oldPath.length);
+      await moveMemoToFolder(m.id, newFolder);
+    }
+
+    // Update customFolders
+    const updatedCustom = customFolders.map((f) => {
+      if (f === oldPath || f.startsWith(oldPath + "/")) {
+        return newPath + f.slice(oldPath.length);
+      }
+      return f;
+    });
+    saveCustomFolders(updatedCustom);
+
+    // Update folderOrder (top-level only)
+    const updatedOrder = folderOrder.map((f) => (f === oldPath ? newPath : f));
+    saveFolderOrder(updatedOrder);
+
+    // Update current selection's folder if affected
+    if (autoSave.selectedId) {
+      if (autoSave.folder === oldPath || autoSave.folder.startsWith(oldPath + "/")) {
+        const newFolder = newPath + autoSave.folder.slice(oldPath.length);
+        autoSave.updateFolderSilently(newFolder);
+      }
+    }
+
+    await fetchMemos();
+  };
+
   // Create folder
   const handleCreateFolder = () => {
     const name = newFolderName.trim();
@@ -513,11 +518,9 @@ export default function Home() {
       width={size}
       height={size}
       viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
+      fill="currentColor"
+      stroke="none"
+      className="text-foreground/90"
     >
       <path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2Z" />
     </svg>
@@ -533,7 +536,7 @@ export default function Home() {
       strokeWidth="2"
       strokeLinecap="round"
       strokeLinejoin="round"
-      className="shrink-0"
+      className="shrink-0 text-foreground"
     >
       <path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z" />
       <polyline points="14 2 14 8 20 8" />
@@ -589,10 +592,10 @@ export default function Home() {
                 onMouseEnter={(e) => handleFolderHover(e, f)}
                 onMouseLeave={handleFolderBarMouseLeave}
                 onDragOver={(e) => handleDragOverFolder(e, f)}
-                className={`px-2.5 py-1 text-xs rounded-lg shrink-0 transition-colors flex items-center gap-1 ${
+                className={`px-2.5 py-1 text-xs rounded-lg shrink-0 transition-colors flex items-center gap-1 text-foreground ${
                   openDropdown === f
-                    ? "bg-foreground/10 text-foreground"
-                    : "text-muted hover:text-foreground hover:bg-foreground/5"
+                    ? "bg-foreground/10"
+                    : "hover:bg-foreground/5"
                 }`}
               >
                 <FolderIcon />
@@ -629,7 +632,7 @@ export default function Home() {
                   e.dataTransfer.effectAllowed = "move";
                 }}
                 onClick={() => handleSelect(memo.id)}
-                className="px-2.5 py-1 text-xs rounded-lg shrink-0 transition-colors flex items-center gap-1 text-muted hover:text-foreground hover:bg-foreground/5"
+                className="px-2.5 py-1 text-xs rounded-lg shrink-0 transition-colors flex items-center gap-1 text-foreground hover:bg-foreground/5"
               >
                 <FileIcon />
                 <span className="truncate max-w-[120px]">{memo.title}</span>
@@ -761,7 +764,7 @@ export default function Home() {
                             isHovered ? "bg-foreground/5" : ""
                           }`}
                         >
-                          <span className="flex items-center gap-1.5 text-foreground/80">
+                          <span className="flex items-center gap-1.5 text-foreground">
                             <FolderIcon />
                             {name}
                           </span>
@@ -774,7 +777,7 @@ export default function Home() {
                             strokeWidth="2"
                             strokeLinecap="round"
                             strokeLinejoin="round"
-                            className="text-muted/40"
+                            className="text-foreground/50"
                           >
                             <polyline points="9 18 15 12 9 6" />
                           </svg>
@@ -798,7 +801,7 @@ export default function Home() {
                         }}
                         onClick={() => handleDropdownMemoClick(memo.id)}
                         onMouseEnter={() => setNestedPaths((prev) => prev.slice(0, level))}
-                        className="w-full text-left px-3 py-2 text-xs text-foreground/80 hover:bg-foreground/5 flex items-center gap-1.5 transition-colors"
+                        className="w-full text-left px-3 py-2 text-xs text-foreground hover:bg-foreground/5 flex items-center gap-1.5 transition-colors"
                       >
                         <FileIcon />
                         <span className="truncate">{memo.title}</span>
@@ -825,7 +828,7 @@ export default function Home() {
         <aside className="w-64 shrink-0 border-r border-border bg-sidebar backdrop-blur-xl flex flex-col overflow-hidden">
           <div className="flex-1 overflow-y-auto">
             {loading ? (
-              <div className="px-3 py-6 text-[13px] text-muted">
+              <div className="px-3 py-6 text-xs text-muted">
                 読み込み中...
               </div>
             ) : (
@@ -833,7 +836,7 @@ export default function Home() {
                 memos={memos}
                 allFolderPaths={allFolderPaths}
                 topLevelFolders={orderedTopFolders}
-                selectedId={selectedId}
+                selectedId={autoSave.selectedId}
                 onSelect={handleSelect}
                 onMoveToFolder={async (memoId, targetFolder) => {
                   await moveMemoToFolder(memoId, targetFolder);
@@ -843,6 +846,7 @@ export default function Home() {
                 onDeleteMemo={handleDeleteMemo}
                 onDeleteFolder={handleDeleteFolder}
                 onNewMemo={handleNewInFolder}
+                onRenameFolder={handleRenameFolder}
                 onNewFolder={(parentPath) => {
                   const name = window.prompt("フォルダ名を入力");
                   if (!name?.trim()) return;
@@ -864,20 +868,21 @@ export default function Home() {
         {/* Editor */}
         <main className="flex-1 flex flex-col bg-background">
           <MemoEditor
-            title={title}
-            body={body}
-            folder={folder}
-            isNew={isNew}
-            editing={editing}
-            hasSelection={selectedId !== null}
+            title={autoSave.title}
+            body={autoSave.body}
+            folder={autoSave.folder}
+            isNew={autoSave.isNew}
+            hasSelection={autoSave.selectedId !== null}
             allFolders={allFolderPaths}
+            saveStatus={autoSave.saveStatus}
+            canUndo={undoRedo.canUndo}
+            canRedo={undoRedo.canRedo}
             onChange={handleChange}
-            onFolderChange={setFolder}
-            onSave={handleSave}
+            onFolderChange={handleFolderChange}
             onDelete={handleDelete}
             onNew={handleNew}
-            onEdit={handleEdit}
-            onCancel={handleCancel}
+            onUndo={handleUndo}
+            onRedo={handleRedo}
           />
         </main>
 

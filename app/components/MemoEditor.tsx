@@ -1,22 +1,24 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import type { SaveStatus } from "@/app/hooks/useAutoSaveMemo";
 
 interface MemoEditorProps {
   title: string;
   body: string;
   folder: string;
   isNew: boolean;
-  editing: boolean;
   hasSelection: boolean;
   allFolders: string[];
+  saveStatus: SaveStatus;
+  canUndo: boolean;
+  canRedo: boolean;
   onChange: (field: "title" | "body", value: string) => void;
   onFolderChange: (folder: string) => void;
-  onSave: () => void;
   onDelete: () => void;
   onNew: () => void;
-  onEdit: () => void;
-  onCancel: () => void;
+  onUndo: () => void;
+  onRedo: () => void;
 }
 
 export default function MemoEditor({
@@ -24,16 +26,17 @@ export default function MemoEditor({
   body,
   folder,
   isNew,
-  editing,
   hasSelection,
   allFolders,
+  saveStatus,
+  canUndo,
+  canRedo,
   onChange,
   onFolderChange,
-  onSave,
   onDelete,
   onNew,
-  onEdit,
-  onCancel,
+  onUndo,
+  onRedo,
 }: MemoEditorProps) {
   const [folderInput, setFolderInput] = useState("");
   const [showFolderDropdown, setShowFolderDropdown] = useState(false);
@@ -54,6 +57,25 @@ export default function MemoEditor({
       setShowFolderDropdown(false);
     }
   };
+
+  // Keyboard shortcuts for undo/redo
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === "z" && !e.shiftKey) {
+        e.preventDefault();
+        onUndo();
+      }
+      if (
+        (e.ctrlKey || e.metaKey) &&
+        (e.key === "y" || (e.key === "z" && e.shiftKey))
+      ) {
+        e.preventDefault();
+        onRedo();
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [onUndo, onRedo]);
 
   // Empty state
   if (!hasSelection && !isNew) {
@@ -85,134 +107,92 @@ export default function MemoEditor({
     );
   }
 
-  // Edit mode
-  if (editing) {
-    const filteredFolders = allFolders.filter(
-      (f) =>
-        f !== folder &&
-        (!folderInput || f.toLowerCase().includes(folderInput.toLowerCase()))
-    );
+  const filteredFolders = allFolders.filter(
+    (f) =>
+      f !== folder &&
+      (!folderInput || f.toLowerCase().includes(folderInput.toLowerCase()))
+  );
 
-    return (
-      <div className="flex-1 flex flex-col">
-        <div className="p-5 flex-1 flex flex-col">
-          <div className="flex-1 flex flex-col bg-surface rounded-2xl shadow-sm ring-1 ring-border-strong overflow-hidden">
-            {/* Title row with inline save/cancel */}
-            <div className="flex items-center gap-2 border-b border-border">
-              <input
-                type="text"
-                value={title}
-                onChange={(e) => onChange("title", e.target.value)}
-                placeholder="タイトル"
-                className="flex-1 min-w-0 px-5 py-3.5 text-base font-semibold bg-transparent outline-none placeholder:text-muted/50"
-              />
-              <div className="flex items-center gap-1.5 pr-3 shrink-0">
-                <button
-                  onClick={onCancel}
-                  className="px-3 py-1 text-xs rounded-lg text-muted hover:bg-foreground/5 active:bg-foreground/10 transition-colors"
-                >
-                  キャンセル
-                </button>
-                <button
-                  onClick={onSave}
-                  className="px-3.5 py-1 text-xs font-medium rounded-lg bg-accent text-surface shadow-sm hover:bg-accent-hover active:scale-[0.97] transition-all duration-150"
-                >
-                  保存
-                </button>
-              </div>
-            </div>
-            {/* Folder select */}
-            <div className="relative flex items-center gap-2 px-5 py-2.5 border-b border-border">
-              <svg
-                width="14"
-                height="14"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                className="text-muted shrink-0"
-              >
-                <path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2Z" />
-              </svg>
-              {folder ? (
-                <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs rounded-lg bg-surface-secondary text-foreground/70">
-                  {folder}
-                  <button
-                    onClick={() => onFolderChange("")}
-                    className="text-muted hover:text-foreground transition-colors"
-                  >
-                    <svg
-                      width="12"
-                      height="12"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2.5"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    >
-                      <line x1="18" y1="6" x2="6" y2="18" />
-                      <line x1="6" y1="6" x2="18" y2="18" />
-                    </svg>
-                  </button>
-                </span>
-              ) : (
-                <input
-                  type="text"
-                  value={folderInput}
-                  onChange={(e) => {
-                    setFolderInput(e.target.value);
-                    setShowFolderDropdown(true);
-                  }}
-                  onFocus={() => setShowFolderDropdown(true)}
-                  onBlur={() =>
-                    setTimeout(() => setShowFolderDropdown(false), 150)
-                  }
-                  onKeyDown={handleFolderInputKeyDown}
-                  placeholder="フォルダを選択..."
-                  className="flex-1 text-xs bg-transparent outline-none placeholder:text-muted/50 py-0.5"
-                />
-              )}
-              {showFolderDropdown && !folder && filteredFolders.length > 0 && (
-                <div className="absolute left-0 top-full mt-1 ml-5 bg-surface rounded-xl shadow-lg ring-1 ring-border-strong z-10 py-1 min-w-[160px]">
-                  {filteredFolders.map((f) => (
-                    <button
-                      key={f}
-                      onMouseDown={(e) => e.preventDefault()}
-                      onClick={() => handleFolderSelect(f)}
-                      className="w-full text-left px-3 py-1.5 text-xs text-foreground/70 hover:bg-foreground/5 transition-colors"
-                    >
-                      {f}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-            <textarea
-              value={body}
-              onChange={(e) => onChange("body", e.target.value)}
-              placeholder="メモを入力..."
-              className="w-full flex-1 px-5 py-3.5 bg-transparent outline-none resize-none text-base leading-relaxed placeholder:text-muted/50"
-            />
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // View mode
   return (
     <div className="flex-1 flex flex-col">
       <div className="p-5 flex-1 flex flex-col">
-        <div className="flex-1 flex flex-col bg-background rounded-2xl ring-1 ring-border overflow-hidden">
-          {/* Title row with edit/delete buttons */}
+        <div className="flex-1 flex flex-col bg-surface rounded-2xl shadow-sm ring-1 ring-border-strong overflow-hidden">
+          {/* Title row with status and actions */}
           <div className="flex items-center gap-2 border-b border-border">
-            <h2 className="flex-1 min-w-0 px-5 py-3.5 text-base font-semibold text-foreground truncate">
-              {title}
-            </h2>
+            <input
+              type="text"
+              value={title}
+              onChange={(e) => onChange("title", e.target.value)}
+              placeholder="タイトル"
+              className="flex-1 min-w-0 px-5 py-3.5 text-base font-semibold bg-transparent outline-none placeholder:text-muted/50"
+            />
             <div className="flex items-center gap-1 pr-3 shrink-0">
+              {/* Save status */}
+              <span
+                className={`text-[11px] mr-1 transition-opacity duration-300 ${
+                  saveStatus === "saving"
+                    ? "text-muted animate-pulse"
+                    : saveStatus === "saved"
+                    ? "text-muted"
+                    : saveStatus === "error"
+                    ? "text-red-500 dark:text-red-400"
+                    : "opacity-0"
+                }`}
+              >
+                {saveStatus === "saving"
+                  ? "保存中..."
+                  : saveStatus === "saved"
+                  ? "保存済み"
+                  : saveStatus === "error"
+                  ? "保存エラー"
+                  : ""}
+              </span>
+
+              {/* Undo */}
+              <button
+                onClick={onUndo}
+                disabled={!canUndo}
+                className="p-1.5 rounded-lg text-muted hover:text-foreground hover:bg-foreground/5 transition-colors disabled:opacity-30 disabled:pointer-events-none"
+                aria-label="元に戻す"
+              >
+                <svg
+                  width="14"
+                  height="14"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <polyline points="1 4 1 10 7 10" />
+                  <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10" />
+                </svg>
+              </button>
+
+              {/* Redo */}
+              <button
+                onClick={onRedo}
+                disabled={!canRedo}
+                className="p-1.5 rounded-lg text-muted hover:text-foreground hover:bg-foreground/5 transition-colors disabled:opacity-30 disabled:pointer-events-none"
+                aria-label="やり直し"
+              >
+                <svg
+                  width="14"
+                  height="14"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <polyline points="23 4 23 10 17 10" />
+                  <path d="M20.49 15a9 9 0 1 1-2.13-9.36L23 10" />
+                </svg>
+              </button>
+
+              {/* Delete */}
               <button
                 onClick={onDelete}
                 className="p-1.5 rounded-lg text-muted hover:text-red-500 hover:bg-red-500/10 transition-colors"
@@ -232,39 +212,83 @@ export default function MemoEditor({
                   <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
                 </svg>
               </button>
-              <button
-                onClick={onEdit}
-                className="px-3.5 py-1 text-xs font-medium rounded-lg bg-foreground/[0.06] text-foreground/70 hover:bg-foreground/10 active:scale-[0.97] transition-all duration-150"
-              >
-                編集
-              </button>
             </div>
           </div>
-          {/* Folder (read-only) */}
-          {folder && (
-            <div className="flex items-center gap-2 px-5 py-2.5 border-b border-border">
-              <svg
-                width="14"
-                height="14"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                className="text-muted shrink-0"
-              >
-                <path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2Z" />
-              </svg>
-              <span className="text-xs text-foreground/70">{folder}</span>
-            </div>
-          )}
-          {/* Body (read-only) */}
-          <div className="flex-1 overflow-y-auto">
-            <p className="px-5 py-3.5 text-base leading-relaxed text-foreground/80 whitespace-pre-wrap">
-              {body || <span className="text-muted italic">内容なし</span>}
-            </p>
+
+          {/* Folder select */}
+          <div className="relative flex items-center gap-2 px-5 py-2.5 border-b border-border">
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="currentColor"
+              stroke="none"
+              className="text-foreground/90 shrink-0"
+            >
+              <path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2Z" />
+            </svg>
+            {folder ? (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs rounded-lg bg-surface-secondary text-foreground/70">
+                {folder}
+                <button
+                  onClick={() => onFolderChange("")}
+                  className="text-muted hover:text-foreground transition-colors"
+                >
+                  <svg
+                    width="12"
+                    height="12"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2.5"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <line x1="18" y1="6" x2="6" y2="18" />
+                    <line x1="6" y1="6" x2="18" y2="18" />
+                  </svg>
+                </button>
+              </span>
+            ) : (
+              <input
+                type="text"
+                value={folderInput}
+                onChange={(e) => {
+                  setFolderInput(e.target.value);
+                  setShowFolderDropdown(true);
+                }}
+                onFocus={() => setShowFolderDropdown(true)}
+                onBlur={() =>
+                  setTimeout(() => setShowFolderDropdown(false), 150)
+                }
+                onKeyDown={handleFolderInputKeyDown}
+                placeholder="フォルダを選択..."
+                className="flex-1 text-xs bg-transparent outline-none placeholder:text-muted/50 py-0.5"
+              />
+            )}
+            {showFolderDropdown && !folder && filteredFolders.length > 0 && (
+              <div className="absolute left-0 top-full mt-1 ml-5 bg-surface rounded-xl shadow-lg ring-1 ring-border-strong z-10 py-1 min-w-[160px]">
+                {filteredFolders.map((f) => (
+                  <button
+                    key={f}
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => handleFolderSelect(f)}
+                    className="w-full text-left px-3 py-1.5 text-xs text-foreground/70 hover:bg-foreground/5 transition-colors"
+                  >
+                    {f}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
+
+          {/* Body */}
+          <textarea
+            value={body}
+            onChange={(e) => onChange("body", e.target.value)}
+            placeholder="メモを入力..."
+            className="w-full flex-1 px-5 py-3.5 bg-transparent outline-none resize-none text-base leading-relaxed placeholder:text-muted/50"
+          />
         </div>
       </div>
     </div>
