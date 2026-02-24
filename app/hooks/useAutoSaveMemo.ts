@@ -183,10 +183,10 @@ export function useAutoSaveMemo({ onSaved }: UseAutoSaveMemoOptions) {
 
   // Select an existing memo (flush current first)
   const selectMemo = useCallback(
-    async (id: string) => {
+    async (id: string): Promise<Memo | null> => {
       await flushSave();
       const res = await fetch(`/api/memos/${id}`);
-      if (!res.ok) return;
+      if (!res.ok) return null;
       const memo: Memo = await res.json();
       setTitleState(memo.title);
       setBodyState(memo.body);
@@ -202,6 +202,7 @@ export function useAutoSaveMemo({ onSaved }: UseAutoSaveMemoOptions) {
       dirtyRef.current = false;
       clearSavedTimer();
       setSaveStatus("idle");
+      return memo;
     },
     [flushSave, clearSavedTimer]
   );

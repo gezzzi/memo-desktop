@@ -73,24 +73,13 @@ export default function Home() {
   }, [fetchMemos]);
 
   useEffect(() => {
-    const saved = localStorage.getItem("memo-folders");
-    if (saved) {
-      try {
-        setCustomFolders(JSON.parse(saved));
-      } catch {
-        /* ignore */
-      }
-    }
-  }, []);
-
-  useEffect(() => {
-    const saved = localStorage.getItem("memo-folder-order");
-    if (saved) {
-      try {
-        setFolderOrder(JSON.parse(saved));
-      } catch {
-        /* ignore */
-      }
+    try {
+      const folders = localStorage.getItem("memo-folders");
+      if (folders) setCustomFolders(JSON.parse(folders));
+      const order = localStorage.getItem("memo-folder-order");
+      if (order) setFolderOrder(JSON.parse(order));
+    } catch {
+      /* ignore */
     }
   }, []);
 
@@ -165,12 +154,8 @@ export default function Home() {
   // --- Handlers ---
 
   const handleSelect = async (id: string) => {
-    await autoSave.selectMemo(id);
-    // Reset undo history for the new memo — read the values after selectMemo finishes
-    // We need to fetch the memo data to initialize undo
-    const res = await fetch(`/api/memos/${id}`);
-    if (res.ok) {
-      const memo: Memo = await res.json();
+    const memo = await autoSave.selectMemo(id);
+    if (memo) {
       undoRedo.reset({ title: memo.title, body: memo.body, folder: memo.folder });
     }
   };
@@ -251,12 +236,12 @@ export default function Home() {
       const affectedMemos = memos.filter(
         (m) => m.folder === folderPath || m.folder.startsWith(folderPath + "/")
       );
-      for (const m of affectedMemos) {
-        await fetch(`/api/memos/${m.id}`, { method: "DELETE" });
-        if (autoSave.selectedId === m.id) {
-          autoSave.clearSelection();
-        }
+      if (affectedMemos.some((m) => m.id === autoSave.selectedId)) {
+        autoSave.clearSelection();
       }
+      await Promise.all(
+        affectedMemos.map((m) => fetch(`/api/memos/${m.id}`, { method: "DELETE" }))
+      );
       const updated = customFolders.filter(
         (f) => f !== folderPath && !f.startsWith(folderPath + "/")
       );
@@ -301,10 +286,12 @@ export default function Home() {
     const affectedMemos = memos.filter(
       (m) => m.folder === src || m.folder.startsWith(src + "/")
     );
-    for (const m of affectedMemos) {
-      const newFolder = newBase + m.folder.slice(src.length);
-      await moveMemoToFolder(m.id, newFolder);
-    }
+    await Promise.all(
+      affectedMemos.map((m) => {
+        const newFolder = newBase + m.folder.slice(src.length);
+        return moveMemoToFolder(m.id, newFolder);
+      })
+    );
 
     // Update custom folders
     const updated = customFolders.map((f) => {
@@ -469,10 +456,12 @@ export default function Home() {
     const affectedMemos = memos.filter(
       (m) => m.folder === oldPath || m.folder.startsWith(oldPath + "/")
     );
-    for (const m of affectedMemos) {
-      const newFolder = newPath + m.folder.slice(oldPath.length);
-      await moveMemoToFolder(m.id, newFolder);
-    }
+    await Promise.all(
+      affectedMemos.map((m) => {
+        const newFolder = newPath + m.folder.slice(oldPath.length);
+        return moveMemoToFolder(m.id, newFolder);
+      })
+    );
 
     // Update customFolders
     const updatedCustom = customFolders.map((f) => {
