@@ -13,6 +13,7 @@ export function useAutoSaveMemo({ onSaved }: UseAutoSaveMemoOptions) {
   const [title, setTitleState] = useState("");
   const [body, setBodyState] = useState("");
   const [folder, setFolderState] = useState("");
+  const [createdAt, setCreatedAt] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [isNew, setIsNew] = useState(false);
   const [saveStatus, setSaveStatus] = useState<SaveStatus>("idle");
@@ -81,6 +82,7 @@ export function useAutoSaveMemo({ onSaved }: UseAutoSaveMemoOptions) {
           selectedIdRef.current = memo.id;
           setIsNew(false);
           isNewRef.current = false;
+          setCreatedAt(memo.createdAt);
           dirtyRef.current = false;
           showSaved();
           await onSaved();
@@ -189,6 +191,7 @@ export function useAutoSaveMemo({ onSaved }: UseAutoSaveMemoOptions) {
       setTitleState(memo.title);
       setBodyState(memo.body);
       setFolderState(memo.folder);
+      setCreatedAt(memo.createdAt);
       titleRef.current = memo.title;
       bodyRef.current = memo.body;
       folderRef.current = memo.folder;
@@ -211,6 +214,7 @@ export function useAutoSaveMemo({ onSaved }: UseAutoSaveMemoOptions) {
       setTitleState(defaultTitle);
       setBodyState("");
       setFolderState(folderPath);
+      setCreatedAt("");
       titleRef.current = defaultTitle;
       bodyRef.current = "";
       folderRef.current = folderPath;
@@ -236,6 +240,7 @@ export function useAutoSaveMemo({ onSaved }: UseAutoSaveMemoOptions) {
     setTitleState("");
     setBodyState("");
     setFolderState("");
+    setCreatedAt("");
     titleRef.current = "";
     bodyRef.current = "";
     folderRef.current = "";
@@ -273,6 +278,7 @@ export function useAutoSaveMemo({ onSaved }: UseAutoSaveMemoOptions) {
     title,
     body,
     folder,
+    createdAt,
     selectedId,
     isNew,
     saveStatus,

@@ -6,6 +6,7 @@ import type { Memo, MemoSummary } from "./types";
 const MEMOS_DIR = path.join(process.cwd(), "memos");
 const ID_PATTERN = /^[a-f0-9-]{36}$/;
 const FOLDER_PATTERN = /^\[folder:(.*)\]$/;
+const CREATED_PATTERN = /^\[created:(.*)\]$/;
 
 async function ensureMemosDir() {
   await fs.mkdir(MEMOS_DIR, { recursive: true });
@@ -15,15 +16,25 @@ function validateId(id: string): boolean {
   return ID_PATTERN.test(id);
 }
 
+function todayString(): string {
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = String(now.getMonth() + 1).padStart(2, "0");
+  const d = String(now.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
 function parseMemoFile(content: string): {
   title: string;
   body: string;
   folder: string;
+  createdAt: string;
 } {
   const lines = content.split("\n");
   const title = (lines[0] ?? "").replace(/\r$/, "");
 
   let folder = "";
+  let createdAt = "";
   let bodyStart = 1;
 
   // Parse metadata lines after title
@@ -35,19 +46,29 @@ function parseMemoFile(content: string): {
       bodyStart = i + 1;
       continue;
     }
+    const createdMatch = line.match(CREATED_PATTERN);
+    if (createdMatch) {
+      createdAt = createdMatch[1].trim();
+      bodyStart = i + 1;
+      continue;
+    }
     break;
   }
 
   const body = lines.slice(bodyStart).join("\n");
-  return { title, body, folder };
+  return { title, body, folder, createdAt };
 }
 
 function serializeMemo(
   title: string,
   body: string,
-  folder: string
+  folder: string,
+  createdAt: string
 ): string {
   const parts = [title];
+  if (createdAt) {
+    parts.push(`[created:${createdAt}]`);
+  }
   if (folder) {
     parts.push(`[folder:${folder}]`);
   }
@@ -69,11 +90,12 @@ export async function listMemos(): Promise<MemoSummary[]> {
         fs.readFile(filePath, "utf-8"),
         fs.stat(filePath),
       ]);
-      const { title, folder } = parseMemoFile(content);
+      const { title, folder, createdAt } = parseMemoFile(content);
       return {
         id: file.replace(/\.txt$/, ""),
         title: title || "無題",
         folder,
+        createdAt,
         updatedAt: stat.mtime.toISOString(),
       };
     })
@@ -95,13 +117,13 @@ export async function getMemo(id: string): Promise<Memo | null> {
       fs.readFile(filePath, "utf-8"),
       fs.stat(filePath),
     ]);
-    const { title, body, folder } = parseMemoFile(content);
+    const { title, body, folder, createdAt } = parseMemoFile(content);
     return {
       id,
       title: title || "無題",
       body,
       folder,
-      createdAt: stat.birthtime.toISOString(),
+      createdAt,
       updatedAt: stat.mtime.toISOString(),
     };
   } catch {
@@ -118,7 +140,8 @@ export async function createMemo(
 
   const id = crypto.randomUUID();
   const filePath = path.join(MEMOS_DIR, `${id}.txt`);
-  const content = serializeMemo(title, body, folder);
+  const createdAt = todayString();
+  const content = serializeMemo(title, body, folder, createdAt);
 
   await fs.writeFile(filePath, content, "utf-8");
   const stat = await fs.stat(filePath);
@@ -128,7 +151,7 @@ export async function createMemo(
     title,
     body,
     folder,
-    createdAt: stat.birthtime.toISOString(),
+    createdAt,
     updatedAt: stat.mtime.toISOString(),
   };
 }
@@ -143,13 +166,15 @@ export async function updateMemo(
   await ensureMemosDir();
 
   const filePath = path.join(MEMOS_DIR, `${id}.txt`);
+  let existingCreatedAt = "";
   try {
-    await fs.access(filePath);
+    const existingContent = await fs.readFile(filePath, "utf-8");
+    existingCreatedAt = parseMemoFile(existingContent).createdAt;
   } catch {
     return null;
   }
 
-  const content = serializeMemo(title, body, folder);
+  const content = serializeMemo(title, body, folder, existingCreatedAt);
   await fs.writeFile(filePath, content, "utf-8");
   const stat = await fs.stat(filePath);
 
@@ -158,7 +183,7 @@ export async function updateMemo(
     title,
     body,
     folder,
-    createdAt: stat.birthtime.toISOString(),
+    createdAt: existingCreatedAt,
     updatedAt: stat.mtime.toISOString(),
   };
 }

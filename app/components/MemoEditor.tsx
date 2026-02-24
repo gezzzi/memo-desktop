@@ -7,6 +7,7 @@ interface MemoEditorProps {
   title: string;
   body: string;
   folder: string;
+  createdAt: string;
   isNew: boolean;
   hasSelection: boolean;
   allFolders: string[];
@@ -25,6 +26,7 @@ export default function MemoEditor({
   title,
   body,
   folder,
+  createdAt,
   isNew,
   hasSelection,
   allFolders,
@@ -215,7 +217,7 @@ export default function MemoEditor({
             </div>
           </div>
 
-          {/* Folder select */}
+          {/* Folder select + Created date */}
           <div className="relative flex items-center gap-2 px-5 py-2.5 border-b border-border">
             <svg
               width="14"
@@ -265,6 +267,10 @@ export default function MemoEditor({
                 placeholder="フォルダを選択..."
                 className="flex-1 text-xs bg-transparent outline-none placeholder:text-muted/50 py-0.5"
               />
+            )}
+            {/* Created date - right aligned */}
+            {createdAt && (
+              <span className="ml-auto text-xs text-muted shrink-0">{createdAt}</span>
             )}
             {showFolderDropdown && !folder && filteredFolders.length > 0 && (
               <div className="absolute left-0 top-full mt-1 ml-5 bg-surface rounded-xl shadow-lg ring-1 ring-border-strong z-10 py-1 min-w-[160px]">

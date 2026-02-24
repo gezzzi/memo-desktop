@@ -871,6 +871,7 @@ export default function Home() {
             title={autoSave.title}
             body={autoSave.body}
             folder={autoSave.folder}
+            createdAt={autoSave.createdAt}
             isNew={autoSave.isNew}
             hasSelection={autoSave.selectedId !== null}
             allFolders={allFolderPaths}
