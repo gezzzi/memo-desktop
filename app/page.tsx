@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useMemo, useRef, Fragment } from "react";
-import type { MemoSummary, Memo } from "@/lib/types";
+import type { MemoSummary, Memo, FocusedSidebarItem, SidebarOrder } from "@/lib/types";
 import MemoList from "./components/MemoList";
 import MemoEditor from "./components/MemoEditor";
 import ThemeToggle from "./components/ThemeToggle";
@@ -29,7 +29,8 @@ export default function Home() {
   const [customFolders, setCustomFolders] = useState<string[]>([]);
   const [openDropdown, setOpenDropdown] = useState<string | null>(null);
   const [nestedPaths, setNestedPaths] = useState<string[]>([]);
-  const [folderOrder, setFolderOrder] = useState<string[]>([]);
+  const [sidebarOrder, setSidebarOrder] = useState<SidebarOrder>({});
+  const [focusedSidebarItem, setFocusedSidebarItem] = useState<FocusedSidebarItem>(null);
   const [dragInsertIndex, setDragInsertIndex] = useState<number | null>(null);
   const [dropdownPos, setDropdownPos] = useState(0);
   const folderBarRef = useRef<HTMLDivElement>(null);
@@ -76,8 +77,19 @@ export default function Home() {
     try {
       const folders = localStorage.getItem("memo-folders");
       if (folders) setCustomFolders(JSON.parse(folders));
-      const order = localStorage.getItem("memo-folder-order");
-      if (order) setFolderOrder(JSON.parse(order));
+      const savedOrder = localStorage.getItem("memo-sidebar-order");
+      if (savedOrder) {
+        setSidebarOrder(JSON.parse(savedOrder));
+      } else {
+        // Migrate from old format
+        const oldOrder = localStorage.getItem("memo-folder-order");
+        if (oldOrder) {
+          const oldFolders: string[] = JSON.parse(oldOrder);
+          const migrated: SidebarOrder = { "": { folders: oldFolders } };
+          setSidebarOrder(migrated);
+          localStorage.setItem("memo-sidebar-order", JSON.stringify(migrated));
+        }
+      }
     } catch {
       /* ignore */
     }
@@ -88,9 +100,9 @@ export default function Home() {
     localStorage.setItem("memo-folders", JSON.stringify(folders));
   };
 
-  const saveFolderOrder = (order: string[]) => {
-    setFolderOrder(order);
-    localStorage.setItem("memo-folder-order", JSON.stringify(order));
+  const saveSidebarOrder = (order: SidebarOrder) => {
+    setSidebarOrder(order);
+    localStorage.setItem("memo-sidebar-order", JSON.stringify(order));
   };
 
   // All known folder paths (including intermediate)
@@ -115,39 +127,70 @@ export default function Home() {
     [allFolderPaths]
   );
 
-  // Ordered top-level folders (user-defined order)
-  const orderedTopFolders = useMemo(() => {
-    const ordered: string[] = [];
-    for (const f of folderOrder) {
-      if (topLevelFolders.includes(f)) ordered.push(f);
-    }
-    for (const f of topLevelFolders) {
-      if (!ordered.includes(f)) ordered.push(f);
-    }
-    return ordered;
-  }, [topLevelFolders, folderOrder]);
+  // Build ordered children (folders + memos) for a given scope
+  const buildOrderedChildren = useCallback(
+    (scope: string): { folders: string[]; memos: MemoSummary[] } => {
+      // Get actual child folder names at this scope
+      let actualFolderNames: string[];
+      if (scope === "") {
+        actualFolderNames = topLevelFolders;
+      } else {
+        const prefix = scope + "/";
+        const children = new Set<string>();
+        allFolderPaths.forEach((p) => {
+          if (p.startsWith(prefix)) {
+            const seg = p.slice(prefix.length).split("/")[0];
+            if (seg) children.add(seg);
+          }
+        });
+        actualFolderNames = Array.from(children);
+      }
 
-  // Children of a given path
-  const getChildFolders = useCallback(
-    (parentPath: string) => {
-      const prefix = parentPath + "/";
-      const children = new Set<string>();
-      allFolderPaths.forEach((p) => {
-        if (p.startsWith(prefix)) {
-          const rest = p.slice(prefix.length);
-          const seg = rest.split("/")[0];
-          if (seg) children.add(seg);
-        }
-      });
-      return Array.from(children).sort();
+      // Get actual memos at this scope
+      const actualMemos = scope === ""
+        ? memos.filter((m) => !m.folder)
+        : memos.filter((m) => m.folder === scope);
+
+      const saved = sidebarOrder[scope];
+      if (!saved) {
+        return {
+          folders: [...actualFolderNames].sort(),
+          memos: actualMemos,
+        };
+      }
+
+      // Apply saved folder order
+      const savedFolders = saved.folders || [];
+      const actualFolderSet = new Set(actualFolderNames);
+      const orderedFolders: string[] = [];
+      for (const f of savedFolders) {
+        if (actualFolderSet.has(f)) orderedFolders.push(f);
+      }
+      for (const f of [...actualFolderNames].sort()) {
+        if (!orderedFolders.includes(f)) orderedFolders.push(f);
+      }
+
+      // Apply saved memo order
+      const savedMemos = saved.memos || [];
+      const actualMemoMap = new Map(actualMemos.map((m) => [m.id, m]));
+      const orderedMemos: MemoSummary[] = [];
+      for (const id of savedMemos) {
+        const m = actualMemoMap.get(id);
+        if (m) orderedMemos.push(m);
+      }
+      for (const m of actualMemos) {
+        if (!orderedMemos.some((o) => o.id === m.id)) orderedMemos.push(m);
+      }
+
+      return { folders: orderedFolders, memos: orderedMemos };
     },
-    [allFolderPaths]
+    [sidebarOrder, topLevelFolders, allFolderPaths, memos]
   );
 
-  // Get folder contents for any path
-  const getFolderMemos = useCallback(
-    (path: string) => memos.filter((m) => m.folder === path),
-    [memos]
+  // Ordered top-level folders (user-defined order)
+  const orderedTopFolders = useMemo(
+    () => buildOrderedChildren("").folders,
+    [buildOrderedChildren]
   );
 
 
@@ -159,6 +202,65 @@ export default function Home() {
       undoRedo.reset({ title: memo.title, body: memo.body, folder: memo.folder });
     }
   };
+
+  // Sidebar reorder (Alt+↑/↓)
+  const handleSidebarReorder = useCallback(
+    (direction: "up" | "down") => {
+      if (!focusedSidebarItem) return;
+
+      let scope: string;
+      let isFolder: boolean;
+      let itemKey: string;
+
+      if (focusedSidebarItem.type === "folder") {
+        const path = focusedSidebarItem.path;
+        const lastSlash = path.lastIndexOf("/");
+        scope = lastSlash === -1 ? "" : path.slice(0, lastSlash);
+        itemKey = lastSlash === -1 ? path : path.slice(lastSlash + 1);
+        isFolder = true;
+      } else {
+        const memo = memos.find((m) => m.id === focusedSidebarItem.id);
+        if (!memo) return;
+        scope = memo.folder || "";
+        itemKey = memo.id;
+        isFolder = false;
+      }
+
+      const { folders, memos: scopeMemos } = buildOrderedChildren(scope);
+      const arr = isFolder ? [...folders] : scopeMemos.map((m) => m.id);
+      const idx = arr.indexOf(itemKey);
+      if (idx === -1) return;
+      if (direction === "up" && idx <= 0) return;
+      if (direction === "down" && idx >= arr.length - 1) return;
+
+      const swapIdx = direction === "up" ? idx - 1 : idx + 1;
+      [arr[idx], arr[swapIdx]] = [arr[swapIdx], arr[idx]];
+
+      const updated = { ...sidebarOrder };
+      if (!updated[scope]) updated[scope] = {};
+      if (isFolder) {
+        updated[scope] = { ...updated[scope], folders: arr };
+      } else {
+        updated[scope] = { ...updated[scope], memos: arr };
+      }
+      saveSidebarOrder(updated);
+    },
+    [focusedSidebarItem, memos, sidebarOrder, buildOrderedChildren]
+  );
+
+  // Keyboard handler for Alt+↑/↓
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key !== "ArrowUp" && e.key !== "ArrowDown") return;
+      const active = document.activeElement;
+      if (active && (active.tagName === "TEXTAREA" || active.tagName === "INPUT")) return;
+      if (!focusedSidebarItem) return;
+      e.preventDefault();
+      handleSidebarReorder(e.key === "ArrowUp" ? "up" : "down");
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [focusedSidebarItem, handleSidebarReorder]);
 
   const handleNew = async () => {
     await autoSave.createNewMemo();
@@ -247,6 +349,15 @@ export default function Home() {
       );
       saveCustomFolders(updated);
       await fetchMemos();
+    }
+    // Clear focused sidebar item if deleted
+    if (focusedSidebarItem) {
+      if (
+        (focusedSidebarItem.type === "memo" && deleteTarget.id === focusedSidebarItem.id) ||
+        (focusedSidebarItem.type === "folder" && deleteTarget.id === focusedSidebarItem.path)
+      ) {
+        setFocusedSidebarItem(null);
+      }
     }
     setDeleteTarget(null);
   };
@@ -343,11 +454,15 @@ export default function Home() {
     const currentIndex = orderedTopFolders.indexOf(folderPath);
     if (currentIndex === insertIndex || currentIndex + 1 === insertIndex) return;
 
-    const newOrder = [...orderedTopFolders];
-    newOrder.splice(currentIndex, 1);
+    const newFolders = [...orderedTopFolders];
+    newFolders.splice(currentIndex, 1);
     const adjustedIndex = insertIndex > currentIndex ? insertIndex - 1 : insertIndex;
-    newOrder.splice(adjustedIndex, 0, folderPath);
-    saveFolderOrder(newOrder);
+    newFolders.splice(adjustedIndex, 0, folderPath);
+
+    const updated = { ...sidebarOrder };
+    if (!updated[""]) updated[""] = {};
+    updated[""] = { ...updated[""], folders: newFolders };
+    saveSidebarOrder(updated);
   };
 
   // Capture dropdown position from button
@@ -472,9 +587,30 @@ export default function Home() {
     });
     saveCustomFolders(updatedCustom);
 
-    // Update folderOrder (top-level only)
-    const updatedOrder = folderOrder.map((f) => (f === oldPath ? newPath : f));
-    saveFolderOrder(updatedOrder);
+    // Update sidebarOrder
+    const updatedSidebarOrder = { ...sidebarOrder };
+    const parentScope = oldPath.includes("/") ? oldPath.slice(0, oldPath.lastIndexOf("/")) : "";
+    const oldName = oldPath.split("/").pop()!;
+    if (updatedSidebarOrder[parentScope]?.folders) {
+      updatedSidebarOrder[parentScope] = {
+        ...updatedSidebarOrder[parentScope],
+        folders: updatedSidebarOrder[parentScope].folders!.map(
+          (f) => (f === oldName ? newName : f)
+        ),
+      };
+    }
+    // Rename scope keys
+    for (const key of Object.keys(updatedSidebarOrder)) {
+      if (key === oldPath) {
+        updatedSidebarOrder[newPath] = updatedSidebarOrder[key];
+        delete updatedSidebarOrder[oldPath];
+      } else if (key.startsWith(oldPath + "/")) {
+        const newKey = newPath + key.slice(oldPath.length);
+        updatedSidebarOrder[newKey] = updatedSidebarOrder[key];
+        delete updatedSidebarOrder[key];
+      }
+    }
+    saveSidebarOrder(updatedSidebarOrder);
 
     // Update current selection's folder if affected
     if (autoSave.selectedId) {
@@ -706,8 +842,7 @@ export default function Home() {
               onMouseLeave={handleDropdownMouseLeave}
             >
               {panels.map((panelPath, level) => {
-                const subFolders = getChildFolders(panelPath);
-                const panelMemos = getFolderMemos(panelPath);
+                const { folders: subFolders, memos: panelMemos } = buildOrderedChildren(panelPath);
                 const panelKey = `panel-${panelPath}`;
                 return (
                   <div
@@ -824,8 +959,10 @@ export default function Home() {
               <MemoList
                 memos={memos}
                 allFolderPaths={allFolderPaths}
-                topLevelFolders={orderedTopFolders}
                 selectedId={autoSave.selectedId}
+                focusedSidebarItem={focusedSidebarItem}
+                onFocusSidebarItem={setFocusedSidebarItem}
+                getOrderedChildren={buildOrderedChildren}
                 onSelect={handleSelect}
                 onMoveToFolder={async (memoId, targetFolder) => {
                   await moveMemoToFolder(memoId, targetFolder);

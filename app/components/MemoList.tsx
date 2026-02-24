@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { createPortal } from "react-dom";
-import type { MemoSummary } from "@/lib/types";
+import type { MemoSummary, FocusedSidebarItem } from "@/lib/types";
 
 interface ContextMenu {
   x: number;
@@ -15,8 +15,10 @@ interface ContextMenu {
 interface MemoListProps {
   memos: MemoSummary[];
   allFolderPaths: string[];
-  topLevelFolders: string[];
   selectedId: string | null;
+  focusedSidebarItem: FocusedSidebarItem;
+  onFocusSidebarItem: (item: FocusedSidebarItem) => void;
+  getOrderedChildren: (scope: string) => { folders: string[]; memos: MemoSummary[] };
   onSelect: (id: string) => void;
   onMoveToFolder: (memoId: string, folder: string) => void;
   onMoveFolderIntoFolder: (src: string, target: string) => void;
@@ -30,8 +32,10 @@ interface MemoListProps {
 export default function MemoList({
   memos,
   allFolderPaths,
-  topLevelFolders,
   selectedId,
+  focusedSidebarItem,
+  onFocusSidebarItem,
+  getOrderedChildren,
   onSelect,
   onMoveToFolder,
   onMoveFolderIntoFolder,
@@ -109,25 +113,6 @@ export default function MemoList({
     setRenameValue("");
   };
 
-  const getChildFolderNames = (parentPath: string): string[] => {
-    const prefix = parentPath + "/";
-    const children = new Set<string>();
-    allFolderPaths.forEach((p) => {
-      if (p.startsWith(prefix)) {
-        const rest = p.slice(prefix.length);
-        const seg = rest.split("/")[0];
-        if (seg) children.add(seg);
-      }
-    });
-    return Array.from(children).sort();
-  };
-
-  const getMemosInFolder = (folderPath: string): MemoSummary[] =>
-    memos.filter((m) => m.folder === folderPath);
-
-  const getRootMemos = (): MemoSummary[] =>
-    memos.filter((m) => !m.folder);
-
   const handleDrop = (e: React.DragEvent, targetFolder: string) => {
     e.preventDefault();
     e.stopPropagation();
@@ -151,13 +136,13 @@ export default function MemoList({
 
   const renderFolder = (path: string, name: string, depth: number) => {
     const isOpen = expanded.has(path);
-    const children = getChildFolderNames(path);
-    const folderMemos = getMemosInFolder(path);
+    const isFocused = focusedSidebarItem?.type === "folder" && focusedSidebarItem.path === path;
 
     return (
       <div key={path}>
         {/* Folder row */}
         <div
+          tabIndex={0}
           draggable
           onDragStart={(e) => {
             e.dataTransfer.setData("folder-path", path);
@@ -170,11 +155,16 @@ export default function MemoList({
             setDragOverPath(path);
           }}
           onDrop={(e) => handleDrop(e, path)}
-          onClick={() => toggleExpanded(path)}
+          onClick={() => {
+            onFocusSidebarItem({ type: "folder", path });
+            toggleExpanded(path);
+          }}
           onContextMenu={(e) => openContextMenu(e, "folder", path, name)}
-          className={`w-full flex items-center gap-1 h-7 pr-2 text-xs cursor-pointer select-none ${
+          className={`w-full flex items-center gap-1 h-7 pr-2 text-xs cursor-pointer select-none outline-none ${
             dragOverPath === path
               ? "bg-foreground/10"
+              : isFocused
+              ? "ring-1 ring-inset ring-accent/50"
               : "hover:bg-foreground/[0.06]"
           }`}
           style={{ paddingLeft: 8 + depth * 16 }}
@@ -231,41 +221,53 @@ export default function MemoList({
         </div>
 
         {/* Expanded children */}
-        {isOpen && (
-          <div
-            onDragOver={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              e.dataTransfer.dropEffect = "move";
-              setDragOverPath(path);
-            }}
-            onDrop={(e) => handleDrop(e, path)}
-          >
-            {children.map((childName) =>
-              renderFolder(`${path}/${childName}`, childName, depth + 1)
-            )}
-            {folderMemos.map((memo) => renderMemo(memo, depth + 1))}
-          </div>
-        )}
+        {isOpen && (() => {
+          const { folders: childFolders, memos: childMemos } = getOrderedChildren(path);
+          return (
+            <div
+              onDragOver={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                e.dataTransfer.dropEffect = "move";
+                setDragOverPath(path);
+              }}
+              onDrop={(e) => handleDrop(e, path)}
+            >
+              {childFolders.map((childName) =>
+                renderFolder(`${path}/${childName}`, childName, depth + 1)
+              )}
+              {childMemos.map((memo) => renderMemo(memo, depth + 1))}
+            </div>
+          );
+        })()}
       </div>
     );
   };
 
   const renderMemo = (memo: MemoSummary, depth: number) => {
     const isSelected = selectedId === memo.id;
+    const isFocused = focusedSidebarItem?.type === "memo" && focusedSidebarItem.id === memo.id;
     return (
       <div
         key={memo.id}
+        tabIndex={0}
         draggable
         onDragStart={(e) => {
           e.dataTransfer.setData("memo-id", memo.id);
           e.dataTransfer.effectAllowed = "move";
         }}
-        onClick={() => onSelect(memo.id)}
+        onClick={() => {
+          onSelect(memo.id);
+          onFocusSidebarItem({ type: "memo", id: memo.id });
+        }}
         onContextMenu={(e) => openContextMenu(e, "memo", memo.id, memo.title)}
-        className={`w-full flex items-center gap-1 h-7 pr-2 text-xs cursor-pointer select-none ${
+        className={`w-full flex items-center gap-1 h-7 pr-2 text-xs cursor-pointer select-none outline-none ${
           isSelected
-            ? "bg-foreground/10 text-foreground"
+            ? isFocused
+              ? "bg-foreground/10 text-foreground ring-1 ring-inset ring-accent/50"
+              : "bg-foreground/10 text-foreground"
+            : isFocused
+            ? "ring-1 ring-inset ring-accent/50 text-foreground"
             : "hover:bg-foreground/[0.06] text-foreground"
         }`}
         style={{ paddingLeft: 8 + depth * 16 + 14 }}
@@ -290,7 +292,7 @@ export default function MemoList({
     );
   };
 
-  const rootMemos = getRootMemos();
+  const { folders: rootFolders, memos: rootMemos } = getOrderedChildren("");
 
   if (memos.length === 0 && allFolderPaths.length === 0) {
     return (
@@ -325,7 +327,7 @@ export default function MemoList({
         }}
         onDrop={(e) => handleDrop(e, "")}
       >
-        {topLevelFolders.map((f) => renderFolder(f, f, 0))}
+        {rootFolders.map((f) => renderFolder(f, f, 0))}
         {rootMemos.map((memo) => renderMemo(memo, 0))}
       </div>
 
