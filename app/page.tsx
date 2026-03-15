@@ -32,13 +32,6 @@ export default function Home() {
   const autoSave = useAutoSaveMemo({ onSaved: fetchMemos });
 
   useEffect(() => {
-    fetchMemos().then(() => {
-      const lastId = localStorage.getItem("memo-last-opened");
-      if (lastId) handleSelect(lastId);
-    });
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
-  useEffect(() => {
     try {
       const folders = localStorage.getItem("memo-folders");
       if (folders) setCustomFolders(JSON.parse(folders));
@@ -156,10 +149,22 @@ export default function Home() {
 
   // --- Handlers ---
 
-  const handleSelect = async (id: string) => {
-    await autoSave.selectMemo(id);
-    localStorage.setItem("memo-last-opened", id);
-  };
+  const handleSelect = useCallback(async (id: string) => {
+    const memo = await autoSave.selectMemo(id);
+    if (memo) {
+      localStorage.setItem("memo-last-opened", id);
+    } else {
+      localStorage.removeItem("memo-last-opened");
+    }
+  }, [autoSave]);
+
+  // Restore last opened memo on startup
+  useEffect(() => {
+    fetchMemos().then(() => {
+      const lastId = localStorage.getItem("memo-last-opened");
+      if (lastId) handleSelect(lastId);
+    });
+  }, [fetchMemos, handleSelect]);
 
   // Sidebar reorder (Alt+↑/↓)
   const handleSidebarReorder = useCallback(

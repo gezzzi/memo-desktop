@@ -39,8 +39,9 @@ export default function MemoPages({
   const editInputRef = useRef<HTMLInputElement>(null);
 
   // Restore active page from localStorage, or fall back to first page
+  const hasPages = pages.length > 0;
   useEffect(() => {
-    if (pages.length === 0) {
+    if (!hasPages) {
       setActivePageId(null);
       return;
     }
@@ -50,7 +51,7 @@ export default function MemoPages({
     } else {
       setActivePageId(pages[0].id);
     }
-  }, [memoId, pages.length > 0]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [memoId, hasPages]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Persist active page to localStorage
   useEffect(() => {
