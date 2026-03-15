@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import type { MemoSummary, Memo, FocusedSidebarItem, SidebarOrder } from "@/lib/types";
 import MemoList from "./components/MemoList";
 import MemoEditor from "./components/MemoEditor";
@@ -156,15 +156,18 @@ export default function Home() {
     } else {
       localStorage.removeItem("memo-last-opened");
     }
-  }, [autoSave]);
+  }, [autoSave.selectMemo]);
 
-  // Restore last opened memo on startup
+  // Restore last opened memo on startup (run once)
+  const restoredRef = useRef(false);
   useEffect(() => {
+    if (restoredRef.current) return;
+    restoredRef.current = true;
     fetchMemos().then(() => {
       const lastId = localStorage.getItem("memo-last-opened");
-      if (lastId) handleSelect(lastId);
+      if (lastId) autoSave.selectMemo(lastId);
     });
-  }, [fetchMemos, handleSelect]);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Sidebar reorder (Alt+↑/↓)
   const handleSidebarReorder = useCallback(
