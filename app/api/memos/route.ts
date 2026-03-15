@@ -7,10 +7,10 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
-  const { title, body, folder } = await request.json();
+  const { title, body, folder, pages } = await request.json();
   if (!title?.trim()) {
     return NextResponse.json({ error: "Title is required" }, { status: 400 });
   }
-  const memo = await createMemo(title.trim(), body ?? "", folder ?? "");
+  const memo = await createMemo(title.trim(), body ?? "", folder ?? "", pages ?? []);
   return NextResponse.json(memo, { status: 201 });
 }

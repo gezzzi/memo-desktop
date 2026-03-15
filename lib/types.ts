@@ -1,3 +1,9 @@
+export interface MemoPage {
+  id: string;
+  title: string;
+  body: string;
+}
+
 export interface Memo {
   id: string;
   title: string;
@@ -5,6 +11,7 @@ export interface Memo {
   folder: string;
   createdAt: string;
   updatedAt: string;
+  pages: MemoPage[];
 }
 
 export interface MemoSummary {

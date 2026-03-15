@@ -1,14 +1,13 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import type { MemoSummary, Memo, FocusedSidebarItem, SidebarOrder } from "@/lib/types";
 import MemoList from "./components/MemoList";
 import MemoEditor from "./components/MemoEditor";
 import ThemeToggle from "./components/ThemeToggle";
 import DeleteConfirmDialog from "./components/DeleteConfirmDialog";
-import ScratchPad from "./components/ScratchPad";
+import MemoPages from "./components/MemoPages";
 import { useAutoSaveMemo } from "./hooks/useAutoSaveMemo";
-import { useUndoRedo } from "./hooks/useUndoRedo";
 
 export default function Home() {
   const [memos, setMemos] = useState<MemoSummary[]>([]);
@@ -32,31 +31,12 @@ export default function Home() {
   // Auto-save hook
   const autoSave = useAutoSaveMemo({ onSaved: fetchMemos });
 
-  // Undo/Redo hook
-  const undoRedo = useUndoRedo();
-
-  // Debounced snapshot for undo history
-  const snapshotTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const skipSnapshotRef = useRef(false);
-
-  const scheduleSnapshot = useCallback(() => {
-    if (skipSnapshotRef.current) {
-      skipSnapshotRef.current = false;
-      return;
-    }
-    if (snapshotTimerRef.current) clearTimeout(snapshotTimerRef.current);
-    snapshotTimerRef.current = setTimeout(() => {
-      undoRedo.pushSnapshot({
-        title: autoSave.title,
-        body: autoSave.body,
-        folder: autoSave.folder,
-      });
-    }, 500);
-  }, [undoRedo, autoSave.title, autoSave.body, autoSave.folder]);
-
   useEffect(() => {
-    fetchMemos();
-  }, [fetchMemos]);
+    fetchMemos().then(() => {
+      const lastId = localStorage.getItem("memo-last-opened");
+      if (lastId) handleSelect(lastId);
+    });
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     try {
@@ -177,10 +157,8 @@ export default function Home() {
   // --- Handlers ---
 
   const handleSelect = async (id: string) => {
-    const memo = await autoSave.selectMemo(id);
-    if (memo) {
-      undoRedo.reset({ title: memo.title, body: memo.body, folder: memo.folder });
-    }
+    await autoSave.selectMemo(id);
+    localStorage.setItem("memo-last-opened", id);
   };
 
   // Sidebar reorder (Alt+↑/↓)
@@ -244,48 +222,20 @@ export default function Home() {
 
   const handleNew = async () => {
     await autoSave.createNewMemo();
-    undoRedo.reset({ title: "新規ファイル", body: "", folder: "" });
   };
 
   const handleNewInFolder = async (folderPath: string) => {
     await autoSave.createNewMemo(folderPath);
-    undoRedo.reset({ title: "新規ファイル", body: "", folder: folderPath });
   };
 
   const handleChange = (field: "title" | "body", value: string) => {
     if (field === "title") autoSave.setTitle(value);
     else autoSave.setBody(value);
-    scheduleSnapshot();
   };
 
   const handleFolderChange = (value: string) => {
     autoSave.setFolder(value);
-    scheduleSnapshot();
   };
-
-  const handleUndo = useCallback(() => {
-    const prev = undoRedo.undo();
-    if (prev) {
-      skipSnapshotRef.current = true;
-      autoSave.setTitle(prev.title);
-      skipSnapshotRef.current = true;
-      autoSave.setBody(prev.body);
-      skipSnapshotRef.current = true;
-      autoSave.setFolder(prev.folder);
-    }
-  }, [undoRedo, autoSave]);
-
-  const handleRedo = useCallback(() => {
-    const next = undoRedo.redo();
-    if (next) {
-      skipSnapshotRef.current = true;
-      autoSave.setTitle(next.title);
-      skipSnapshotRef.current = true;
-      autoSave.setBody(next.body);
-      skipSnapshotRef.current = true;
-      autoSave.setFolder(next.folder);
-    }
-  }, [undoRedo, autoSave]);
 
   const handleDelete = () => {
     if (autoSave.selectedId) {
@@ -354,6 +304,7 @@ export default function Home() {
         title: memo.title,
         body: memo.body,
         folder: targetFolder,
+        pages: memo.pages,
       }),
     });
     if (res.ok) {
@@ -527,23 +478,27 @@ export default function Home() {
             hasSelection={autoSave.selectedId !== null}
             allFolders={allFolderPaths}
             saveStatus={autoSave.saveStatus}
-            canUndo={undoRedo.canUndo}
-            canRedo={undoRedo.canRedo}
             onChange={handleChange}
             onFolderChange={handleFolderChange}
             onDelete={handleDelete}
             onNew={handleNew}
-            onUndo={handleUndo}
-            onRedo={handleRedo}
           />
         </main>
 
         {/* Divider */}
         <div className="w-px bg-border" />
 
-        {/* Scratch Pad */}
+        {/* Pages */}
         <aside className="flex-1 flex flex-col bg-background">
-          <ScratchPad />
+          <MemoPages
+            memoId={autoSave.selectedId}
+            pages={autoSave.pages}
+            hasSelection={autoSave.selectedId !== null || autoSave.isNew}
+            onAddPage={autoSave.addPage}
+            onDeletePage={autoSave.deletePage}
+            onPageTitleChange={autoSave.setPageTitle}
+            onPageBodyChange={autoSave.setPageBody}
+          />
         </aside>
       </div>
 

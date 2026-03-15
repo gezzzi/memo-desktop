@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import type { SaveStatus } from "@/app/hooks/useAutoSaveMemo";
 
 interface MemoEditorProps {
@@ -12,14 +12,10 @@ interface MemoEditorProps {
   hasSelection: boolean;
   allFolders: string[];
   saveStatus: SaveStatus;
-  canUndo: boolean;
-  canRedo: boolean;
   onChange: (field: "title" | "body", value: string) => void;
   onFolderChange: (folder: string) => void;
   onDelete: () => void;
   onNew: () => void;
-  onUndo: () => void;
-  onRedo: () => void;
 }
 
 export default function MemoEditor({
@@ -31,14 +27,10 @@ export default function MemoEditor({
   hasSelection,
   allFolders,
   saveStatus,
-  canUndo,
-  canRedo,
   onChange,
   onFolderChange,
   onDelete,
   onNew,
-  onUndo,
-  onRedo,
 }: MemoEditorProps) {
   const [folderInput, setFolderInput] = useState("");
   const [showFolderDropdown, setShowFolderDropdown] = useState(false);
@@ -59,25 +51,6 @@ export default function MemoEditor({
       setShowFolderDropdown(false);
     }
   };
-
-  // Keyboard shortcuts for undo/redo
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && e.key === "z" && !e.shiftKey) {
-        e.preventDefault();
-        onUndo();
-      }
-      if (
-        (e.ctrlKey || e.metaKey) &&
-        (e.key === "y" || (e.key === "z" && e.shiftKey))
-      ) {
-        e.preventDefault();
-        onRedo();
-      }
-    };
-    window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
-  }, [onUndo, onRedo]);
 
   // Empty state
   if (!hasSelection && !isNew) {
@@ -150,50 +123,6 @@ export default function MemoEditor({
                   ? "保存エラー"
                   : ""}
               </span>
-
-              {/* Undo */}
-              <button
-                onClick={onUndo}
-                disabled={!canUndo}
-                className="p-1.5 rounded-lg text-muted hover:text-foreground hover:bg-foreground/5 transition-colors disabled:opacity-30 disabled:pointer-events-none"
-                aria-label="元に戻す"
-              >
-                <svg
-                  width="14"
-                  height="14"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                >
-                  <polyline points="1 4 1 10 7 10" />
-                  <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10" />
-                </svg>
-              </button>
-
-              {/* Redo */}
-              <button
-                onClick={onRedo}
-                disabled={!canRedo}
-                className="p-1.5 rounded-lg text-muted hover:text-foreground hover:bg-foreground/5 transition-colors disabled:opacity-30 disabled:pointer-events-none"
-                aria-label="やり直し"
-              >
-                <svg
-                  width="14"
-                  height="14"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                >
-                  <polyline points="23 4 23 10 17 10" />
-                  <path d="M20.49 15a9 9 0 1 1-2.13-9.36L23 10" />
-                </svg>
-              </button>
 
               {/* Delete */}
               <button
