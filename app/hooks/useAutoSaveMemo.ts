@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useCallback, useEffect } from "react";
-import type { Memo } from "@/lib/types";
+import type { Memo, MemoPage } from "@/lib/types";
 
 export type SaveStatus = "idle" | "saving" | "saved" | "error";
 
@@ -14,6 +14,7 @@ export function useAutoSaveMemo({ onSaved }: UseAutoSaveMemoOptions) {
   const [body, setBodyState] = useState("");
   const [folder, setFolderState] = useState("");
   const [createdAt, setCreatedAt] = useState("");
+  const [pages, setPagesState] = useState<MemoPage[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [isNew, setIsNew] = useState(false);
   const [saveStatus, setSaveStatus] = useState<SaveStatus>("idle");
@@ -29,12 +30,14 @@ export function useAutoSaveMemo({ onSaved }: UseAutoSaveMemoOptions) {
   const titleRef = useRef(title);
   const bodyRef = useRef(body);
   const folderRef = useRef(folder);
+  const pagesRef = useRef(pages);
   const selectedIdRef = useRef(selectedId);
   const isNewRef = useRef(isNew);
 
   titleRef.current = title;
   bodyRef.current = body;
   folderRef.current = folder;
+  pagesRef.current = pages;
   selectedIdRef.current = selectedId;
   isNewRef.current = isNew;
 
@@ -59,6 +62,7 @@ export function useAutoSaveMemo({ onSaved }: UseAutoSaveMemoOptions) {
     const currentTitle = titleRef.current.trim() || "新規ファイル";
     const currentBody = bodyRef.current;
     const currentFolder = folderRef.current;
+    const currentPages = pagesRef.current;
     const currentId = selectedIdRef.current;
     const currentIsNew = isNewRef.current;
 
@@ -74,6 +78,7 @@ export function useAutoSaveMemo({ onSaved }: UseAutoSaveMemoOptions) {
             title: currentTitle,
             body: currentBody,
             folder: currentFolder,
+            pages: currentPages,
           }),
         });
         if (res.ok) {
@@ -98,6 +103,7 @@ export function useAutoSaveMemo({ onSaved }: UseAutoSaveMemoOptions) {
             title: currentTitle,
             body: currentBody,
             folder: currentFolder,
+            pages: currentPages,
           }),
         });
         if (res.ok) {
@@ -181,6 +187,49 @@ export function useAutoSaveMemo({ onSaved }: UseAutoSaveMemoOptions) {
     [markDirtyAndSchedule]
   );
 
+  const addPage = useCallback(() => {
+    const newPage: MemoPage = { id: globalThis.crypto.randomUUID(), title: "", body: "" };
+    const updated = [...pagesRef.current, newPage];
+    setPagesState(updated);
+    pagesRef.current = updated;
+    markDirtyAndSchedule();
+    return newPage.id;
+  }, [markDirtyAndSchedule]);
+
+  const deletePage = useCallback(
+    (pageId: string) => {
+      const updated = pagesRef.current.filter((p) => p.id !== pageId);
+      setPagesState(updated);
+      pagesRef.current = updated;
+      markDirtyAndSchedule();
+    },
+    [markDirtyAndSchedule]
+  );
+
+  const setPageTitle = useCallback(
+    (pageId: string, newTitle: string) => {
+      const updated = pagesRef.current.map((p) =>
+        p.id === pageId ? { ...p, title: newTitle } : p
+      );
+      setPagesState(updated);
+      pagesRef.current = updated;
+      markDirtyAndSchedule();
+    },
+    [markDirtyAndSchedule]
+  );
+
+  const setPageBody = useCallback(
+    (pageId: string, newBody: string) => {
+      const updated = pagesRef.current.map((p) =>
+        p.id === pageId ? { ...p, body: newBody } : p
+      );
+      setPagesState(updated);
+      pagesRef.current = updated;
+      markDirtyAndSchedule();
+    },
+    [markDirtyAndSchedule]
+  );
+
   // Select an existing memo (flush current first)
   const selectMemo = useCallback(
     async (id: string): Promise<Memo | null> => {
@@ -192,9 +241,11 @@ export function useAutoSaveMemo({ onSaved }: UseAutoSaveMemoOptions) {
       setBodyState(memo.body);
       setFolderState(memo.folder);
       setCreatedAt(memo.createdAt);
+      setPagesState(memo.pages ?? []);
       titleRef.current = memo.title;
       bodyRef.current = memo.body;
       folderRef.current = memo.folder;
+      pagesRef.current = memo.pages ?? [];
       setSelectedId(memo.id);
       selectedIdRef.current = memo.id;
       setIsNew(false);
@@ -216,9 +267,11 @@ export function useAutoSaveMemo({ onSaved }: UseAutoSaveMemoOptions) {
       setBodyState("");
       setFolderState(folderPath);
       setCreatedAt("");
+      setPagesState([]);
       titleRef.current = defaultTitle;
       bodyRef.current = "";
       folderRef.current = folderPath;
+      pagesRef.current = [];
       setSelectedId(null);
       selectedIdRef.current = null;
       setIsNew(true);
@@ -242,9 +295,11 @@ export function useAutoSaveMemo({ onSaved }: UseAutoSaveMemoOptions) {
     setBodyState("");
     setFolderState("");
     setCreatedAt("");
+    setPagesState([]);
     titleRef.current = "";
     bodyRef.current = "";
     folderRef.current = "";
+    pagesRef.current = [];
     setSelectedId(null);
     selectedIdRef.current = null;
     setIsNew(false);
@@ -280,12 +335,17 @@ export function useAutoSaveMemo({ onSaved }: UseAutoSaveMemoOptions) {
     body,
     folder,
     createdAt,
+    pages,
     selectedId,
     isNew,
     saveStatus,
     setTitle,
     setBody,
     setFolder,
+    addPage,
+    deletePage,
+    setPageTitle,
+    setPageBody,
     selectMemo,
     createNewMemo,
     clearSelection,

@@ -16,11 +16,11 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
-  const { title, body, folder } = await request.json();
+  const { title, body, folder, pages } = await request.json();
   if (!title?.trim()) {
     return NextResponse.json({ error: "Title is required" }, { status: 400 });
   }
-  const memo = await updateMemo(id, title.trim(), body ?? "", folder ?? "");
+  const memo = await updateMemo(id, title.trim(), body ?? "", folder ?? "", pages ?? []);
   if (!memo) return NextResponse.json({ error: "Not found" }, { status: 404 });
   return NextResponse.json(memo);
 }

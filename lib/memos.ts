@@ -1,12 +1,13 @@
 import fs from "fs/promises";
 import path from "path";
 import crypto from "crypto";
-import type { Memo, MemoSummary } from "./types";
+import type { Memo, MemoPage, MemoSummary } from "./types";
 
 const MEMOS_DIR = path.join(process.cwd(), "memos");
 const ID_PATTERN = /^[a-f0-9-]{36}$/;
 const FOLDER_PATTERN = /^\[folder:(.*)\]$/;
 const CREATED_PATTERN = /^\[created:(.*)\]$/;
+const PAGE_PATTERN = /^\[page:([a-f0-9-]{36})(?::(.+))?\]$/;
 
 async function ensureMemosDir() {
   await fs.mkdir(MEMOS_DIR, { recursive: true });
@@ -29,6 +30,7 @@ function parseMemoFile(content: string): {
   body: string;
   folder: string;
   createdAt: string;
+  pages: MemoPage[];
 } {
   const lines = content.split("\n");
   const title = (lines[0] ?? "").replace(/\r$/, "");
@@ -55,15 +57,44 @@ function parseMemoFile(content: string): {
     break;
   }
 
-  const body = lines.slice(bodyStart).join("\n");
-  return { title, body, folder, createdAt };
+  // Parse body and pages
+  const remainingLines = lines.slice(bodyStart);
+  const bodyLines: string[] = [];
+  const pages: MemoPage[] = [];
+  let currentPageId: string | null = null;
+  let currentPageTitle = "";
+  let currentPageLines: string[] = [];
+
+  for (const rawLine of remainingLines) {
+    const line = rawLine.replace(/\r$/, "");
+    const pageMatch = line.match(PAGE_PATTERN);
+    if (pageMatch) {
+      if (currentPageId !== null) {
+        pages.push({ id: currentPageId, title: currentPageTitle, body: currentPageLines.join("\n") });
+      }
+      currentPageId = pageMatch[1];
+      currentPageTitle = pageMatch[2] ?? "";
+      currentPageLines = [];
+    } else if (currentPageId !== null) {
+      currentPageLines.push(rawLine);
+    } else {
+      bodyLines.push(rawLine);
+    }
+  }
+  if (currentPageId !== null) {
+    pages.push({ id: currentPageId, title: currentPageTitle, body: currentPageLines.join("\n") });
+  }
+
+  const body = bodyLines.join("\n");
+  return { title, body, folder, createdAt, pages };
 }
 
 function serializeMemo(
   title: string,
   body: string,
   folder: string,
-  createdAt: string
+  createdAt: string,
+  pages: MemoPage[] = []
 ): string {
   const parts = [title];
   if (createdAt) {
@@ -74,6 +105,10 @@ function serializeMemo(
   }
   if (body) {
     parts.push(body);
+  }
+  for (const page of pages) {
+    parts.push(page.title ? `[page:${page.id}:${page.title}]` : `[page:${page.id}]`);
+    parts.push(page.body);
   }
   return parts.join("\n");
 }
@@ -117,7 +152,7 @@ export async function getMemo(id: string): Promise<Memo | null> {
       fs.readFile(filePath, "utf-8"),
       fs.stat(filePath),
     ]);
-    const { title, body, folder, createdAt } = parseMemoFile(content);
+    const { title, body, folder, createdAt, pages } = parseMemoFile(content);
     return {
       id,
       title: title || "無題",
@@ -125,6 +160,7 @@ export async function getMemo(id: string): Promise<Memo | null> {
       folder,
       createdAt,
       updatedAt: stat.mtime.toISOString(),
+      pages,
     };
   } catch {
     return null;
@@ -134,14 +170,15 @@ export async function getMemo(id: string): Promise<Memo | null> {
 export async function createMemo(
   title: string,
   body: string,
-  folder: string
+  folder: string,
+  pages: MemoPage[] = []
 ): Promise<Memo> {
   await ensureMemosDir();
 
   const id = crypto.randomUUID();
   const filePath = path.join(MEMOS_DIR, `${id}.txt`);
   const createdAt = todayString();
-  const content = serializeMemo(title, body, folder, createdAt);
+  const content = serializeMemo(title, body, folder, createdAt, pages);
 
   await fs.writeFile(filePath, content, "utf-8");
   const stat = await fs.stat(filePath);
@@ -153,6 +190,7 @@ export async function createMemo(
     folder,
     createdAt,
     updatedAt: stat.mtime.toISOString(),
+    pages,
   };
 }
 
@@ -160,7 +198,8 @@ export async function updateMemo(
   id: string,
   title: string,
   body: string,
-  folder: string
+  folder: string,
+  pages: MemoPage[] = []
 ): Promise<Memo | null> {
   if (!validateId(id)) return null;
   await ensureMemosDir();
@@ -174,7 +213,7 @@ export async function updateMemo(
     return null;
   }
 
-  const content = serializeMemo(title, body, folder, existingCreatedAt);
+  const content = serializeMemo(title, body, folder, existingCreatedAt, pages);
   await fs.writeFile(filePath, content, "utf-8");
   const stat = await fs.stat(filePath);
 
@@ -185,6 +224,7 @@ export async function updateMemo(
     folder,
     createdAt: existingCreatedAt,
     updatedAt: stat.mtime.toISOString(),
+    pages,
   };
 }
 
