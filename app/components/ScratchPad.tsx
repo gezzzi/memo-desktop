@@ -13,6 +13,7 @@ export default function ScratchPad() {
             value={text}
             onChange={(e) => setText(e.target.value)}
             placeholder="一時メモ（リロードで消えます）"
+            spellCheck={false}
             className="w-full flex-1 px-5 py-3.5 bg-transparent outline-none resize-none text-base leading-relaxed placeholder:text-muted"
           />
         </div>

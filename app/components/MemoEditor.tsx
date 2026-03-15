@@ -126,6 +126,7 @@ export default function MemoEditor({
               value={title}
               onChange={(e) => onChange("title", e.target.value)}
               placeholder="タイトル"
+              spellCheck={false}
               className="flex-1 min-w-0 px-5 py-3.5 text-base font-semibold bg-transparent outline-none placeholder:text-muted/50"
             />
             <div className="flex items-center gap-1 pr-3 shrink-0">
@@ -293,6 +294,7 @@ export default function MemoEditor({
             value={body}
             onChange={(e) => onChange("body", e.target.value)}
             placeholder="メモを入力..."
+            spellCheck={false}
             className="w-full flex-1 px-5 py-3.5 bg-transparent outline-none resize-none text-base leading-relaxed placeholder:text-muted/50"
           />
         </div>
