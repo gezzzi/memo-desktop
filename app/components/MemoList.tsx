@@ -45,7 +45,14 @@ export default function MemoList({
   onNewFolder,
   onRenameFolder,
 }: MemoListProps) {
-  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [expanded, setExpanded] = useState<Set<string>>(() => {
+    try {
+      const saved = localStorage.getItem("memo-sidebar-expanded");
+      return saved ? new Set(JSON.parse(saved)) : new Set<string>();
+    } catch {
+      return new Set<string>();
+    }
+  });
   const [dragOverPath, setDragOverPath] = useState<string | null>(null);
   const [contextMenu, setContextMenu] = useState<ContextMenu | null>(null);
   const [menuPos, setMenuPos] = useState<{ left: number; top: number }>({ left: 0, top: 0 });
@@ -89,14 +96,41 @@ export default function MemoList({
     };
   }, [contextMenu]);
 
-  const toggleExpanded = (path: string) => {
+  // Persist expanded state
+  const updateExpanded = useCallback((updater: (prev: Set<string>) => Set<string>) => {
     setExpanded((prev) => {
+      const next = updater(prev);
+      localStorage.setItem("memo-sidebar-expanded", JSON.stringify([...next]));
+      return next;
+    });
+  }, []);
+
+  const toggleExpanded = (path: string) => {
+    updateExpanded((prev) => {
       const next = new Set(prev);
       if (next.has(path)) next.delete(path);
       else next.add(path);
       return next;
     });
   };
+
+  // Auto-expand parent folders when a memo is selected
+  useEffect(() => {
+    if (!selectedId) return;
+    const memo = memos.find((m) => m.id === selectedId);
+    if (!memo?.folder) return;
+    const segments = memo.folder.split("/");
+    const parents: string[] = [];
+    for (let i = 1; i <= segments.length; i++) {
+      parents.push(segments.slice(0, i).join("/"));
+    }
+    updateExpanded((prev) => {
+      if (parents.every((p) => prev.has(p))) return prev;
+      const next = new Set(prev);
+      parents.forEach((p) => next.add(p));
+      return next;
+    });
+  }, [selectedId, memos, updateExpanded]);
 
   const commitRename = () => {
     if (!renamingFolder) return;
