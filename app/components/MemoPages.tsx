@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import type { MemoPage } from "@/lib/types";
 import DeleteConfirmDialog from "./DeleteConfirmDialog";
-import { handleMarkdownPaste } from "@/lib/markdownToPlainText";
+import { usePlainPaste } from "@/lib/markdownToPlainText";
 
 interface MemoPagesProps {
   memoId: string | null;
@@ -38,6 +38,7 @@ export default function MemoPages({
   const [editingName, setEditingName] = useState("");
   const [contextMenu, setContextMenu] = useState<ContextMenu | null>(null);
   const editInputRef = useRef<HTMLInputElement>(null);
+  const pageBodyRef = useRef<HTMLTextAreaElement>(null);
 
   // Restore active page from localStorage, or fall back to first page
   const hasPages = pages.length > 0;
@@ -85,6 +86,12 @@ export default function MemoPages({
   }, [contextMenu]);
 
   const activePage = pages.find((p) => p.id === activePageId) ?? null;
+
+  usePlainPaste(
+    pageBodyRef,
+    activePage?.body ?? "",
+    (v) => { if (activePage) onPageBodyChange(activePage.id, v); }
+  );
 
   const deleteTargetIndex = deleteTargetId
     ? pages.findIndex((p) => p.id === deleteTargetId)
@@ -278,9 +285,9 @@ export default function MemoPages({
           {/* Page content */}
           {activePage && (
             <textarea
+              ref={pageBodyRef}
               value={activePage.body}
               onChange={(e) => onPageBodyChange(activePage.id, e.target.value)}
-              onPaste={(e) => handleMarkdownPaste(e, activePage.body, (v) => onPageBodyChange(activePage.id, v))}
               placeholder="ページの内容を入力..."
               spellCheck={false}
               className="w-full flex-1 px-5 py-3.5 bg-transparent outline-none resize-none text-base leading-relaxed placeholder:text-muted/50"
