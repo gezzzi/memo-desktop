@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import type { SaveStatus } from "@/app/hooks/useAutoSaveMemo";
+import { handleMarkdownPaste } from "@/lib/markdownToPlainText";
 
 interface MemoEditorProps {
   title: string;
@@ -222,6 +223,7 @@ export default function MemoEditor({
           <textarea
             value={body}
             onChange={(e) => onChange("body", e.target.value)}
+            onPaste={(e) => handleMarkdownPaste(e, body, (v) => onChange("body", v))}
             placeholder="メモを入力..."
             spellCheck={false}
             className="w-full flex-1 px-5 py-3.5 bg-transparent outline-none resize-none text-base leading-relaxed placeholder:text-muted/50"

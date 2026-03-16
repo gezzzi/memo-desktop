@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import type { MemoPage } from "@/lib/types";
 import DeleteConfirmDialog from "./DeleteConfirmDialog";
+import { handleMarkdownPaste } from "@/lib/markdownToPlainText";
 
 interface MemoPagesProps {
   memoId: string | null;
@@ -279,6 +280,7 @@ export default function MemoPages({
             <textarea
               value={activePage.body}
               onChange={(e) => onPageBodyChange(activePage.id, e.target.value)}
+              onPaste={(e) => handleMarkdownPaste(e, activePage.body, (v) => onPageBodyChange(activePage.id, v))}
               placeholder="ページの内容を入力..."
               spellCheck={false}
               className="w-full flex-1 px-5 py-3.5 bg-transparent outline-none resize-none text-base leading-relaxed placeholder:text-muted/50"
