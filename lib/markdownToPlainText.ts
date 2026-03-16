@@ -5,6 +5,7 @@
 export function containsMarkdown(text: string): boolean {
   // High confidence patterns — one match is enough
   const highPatterns = [
+    /^#{1,6}\s+\S/m,              // ATX headings
     /\[.+?\]\(.+?\)/,              // [text](url) links
     /!\[.*?\]\(.+?\)/,             // ![alt](url) images
     /^```/m,                       // fenced code blocks
@@ -15,13 +16,8 @@ export function containsMarkdown(text: string): boolean {
     if (p.test(text)) return true;
   }
 
-  // Count heading lines — 2+ headings is a strong signal
-  const headingMatches = text.match(/^#{1,6}\s+\S/gm);
-  if (headingMatches && headingMatches.length >= 2) return true;
-
   // Normal patterns — need 2+ distinct matches
   const normalPatterns = [
-    /^#{1,6}\s+\S/m,              // ATX headings
     /\*{1,3}\S.*?\S?\*{1,3}/,     // bold/italic with *
     /_{1,3}\S.*?\S?_{1,3}/,       // bold/italic with _
     /~~\S.*?\S~~/,                // strikethrough
