@@ -1,8 +1,7 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState } from "react";
 import type { SaveStatus } from "@/app/hooks/useAutoSaveMemo";
-import { usePlainPaste } from "@/lib/markdownToPlainText";
 
 interface MemoEditorProps {
   title: string;
@@ -35,9 +34,6 @@ export default function MemoEditor({
 }: MemoEditorProps) {
   const [folderInput, setFolderInput] = useState("");
   const [showFolderDropdown, setShowFolderDropdown] = useState(false);
-  const bodyRef = useRef<HTMLTextAreaElement>(null);
-
-  usePlainPaste(bodyRef, body, (v) => onChange("body", v));
 
   const handleFolderSelect = (f: string) => {
     onFolderChange(f);
@@ -224,7 +220,6 @@ export default function MemoEditor({
 
           {/* Body */}
           <textarea
-            ref={bodyRef}
             value={body}
             onChange={(e) => onChange("body", e.target.value)}
             placeholder="メモを入力..."
