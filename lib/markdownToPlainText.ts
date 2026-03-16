@@ -39,6 +39,49 @@ export function containsMarkdown(text: string): boolean {
 }
 
 /**
+ * Detect if HTML contains rich formatting (not just plain text wrapped in tags).
+ */
+function isRichHtml(html: string): boolean {
+  const richTags = /<(h[1-6]|strong|em|b|i|code|pre|blockquote|ul|ol|li|a\s|table|img)\b/i;
+  return richTags.test(html);
+}
+
+/**
+ * Convert HTML to plain text.
+ */
+function htmlToPlainText(html: string): string {
+  let text = html;
+
+  // Remove style/script tags and contents
+  text = text.replace(/<(style|script)[^>]*>[\s\S]*?<\/\1>/gi, "");
+
+  // Block elements → newlines
+  text = text.replace(/<\/?(p|div|br|h[1-6]|li|tr|blockquote|pre|hr)\b[^>]*\/?>/gi, "\n");
+
+  // List items: preserve as "- "
+  text = text.replace(/<li[^>]*>/gi, "\n- ");
+
+  // Remove all remaining tags
+  text = text.replace(/<[^>]+>/g, "");
+
+  // Decode common HTML entities
+  text = text.replace(/&amp;/g, "&");
+  text = text.replace(/&lt;/g, "<");
+  text = text.replace(/&gt;/g, ">");
+  text = text.replace(/&quot;/g, '"');
+  text = text.replace(/&#39;/g, "'");
+  text = text.replace(/&nbsp;/g, " ");
+
+  // Clean up whitespace
+  text = text.replace(/[ \t]+/g, " ");
+  text = text.replace(/\n /g, "\n");
+  text = text.replace(/ \n/g, "\n");
+  text = text.replace(/\n{3,}/g, "\n\n");
+
+  return text.trim();
+}
+
+/**
  * Convert markdown text to plain text.
  */
 export function markdownToPlainText(text: string): string {
@@ -124,7 +167,7 @@ export function markdownToPlainText(text: string): string {
 
 /**
  * Paste handler for textareas.
- * Detects markdown in clipboard and converts to plain text.
+ * Converts markdown or rich HTML to plain text on paste.
  */
 export function handleMarkdownPaste(
   e: React.ClipboardEvent<HTMLTextAreaElement>,
@@ -132,10 +175,21 @@ export function handleMarkdownPaste(
   setValue: (newValue: string) => void
 ): void {
   const clipText = e.clipboardData.getData("text/plain");
-  if (!clipText || !containsMarkdown(clipText)) return;
+  const clipHtml = e.clipboardData.getData("text/html");
+
+  let converted: string | null = null;
+
+  if (clipText && containsMarkdown(clipText)) {
+    // Clipboard plain text is markdown (e.g. copied from ChatGPT)
+    converted = markdownToPlainText(clipText);
+  } else if (clipHtml && isRichHtml(clipHtml)) {
+    // Clipboard has rich HTML (e.g. copied from a web page)
+    converted = htmlToPlainText(clipHtml);
+  }
+
+  if (!converted) return;
 
   e.preventDefault();
-  const converted = markdownToPlainText(clipText);
   const target = e.currentTarget;
   const start = target.selectionStart;
   const end = target.selectionEnd;
