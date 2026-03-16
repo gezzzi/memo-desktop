@@ -1,4 +1,4 @@
-import { useEffect, type RefObject } from "react";
+import { useEffect, useRef, type RefObject } from "react";
 
 /**
  * Convert markdown text to plain text.
@@ -86,37 +86,54 @@ export function markdownToPlainText(text: string): string {
 
 /**
  * Hook: Ctrl+Shift+V to paste with markdown stripped.
- * Normal Ctrl+V pastes as-is (default browser behavior).
+ * Tracks Shift key state and intercepts the paste event.
  */
 export function usePlainPaste(
   ref: RefObject<HTMLTextAreaElement | null>,
   currentValue: string,
   setValue: (newValue: string) => void
 ): void {
+  const shiftRef = useRef(false);
+  const valueRef = useRef(currentValue);
+  valueRef.current = currentValue;
+  const setValueRef = useRef(setValue);
+  setValueRef.current = setValue;
+
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
 
-    const handleKeyDown = (e: KeyboardEvent) => {
-      // Ctrl+Shift+V (or Cmd+Shift+V on Mac)
-      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === "V") {
-        e.preventDefault();
-        navigator.clipboard.readText().then((clipText) => {
-          if (!clipText) return;
-          const converted = markdownToPlainText(clipText);
-          const start = el.selectionStart;
-          const end = el.selectionEnd;
-          const newValue =
-            currentValue.slice(0, start) + converted + currentValue.slice(end);
-          setValue(newValue);
-          requestAnimationFrame(() => {
-            el.selectionStart = el.selectionEnd = start + converted.length;
-          });
-        });
-      }
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Shift") shiftRef.current = true;
+    };
+    const onKeyUp = (e: KeyboardEvent) => {
+      if (e.key === "Shift") shiftRef.current = false;
+    };
+    const onPaste = (e: ClipboardEvent) => {
+      if (!shiftRef.current) return;
+
+      e.preventDefault();
+      const clipText = e.clipboardData?.getData("text/plain") ?? "";
+      if (!clipText) return;
+
+      const converted = markdownToPlainText(clipText);
+      const start = el.selectionStart;
+      const end = el.selectionEnd;
+      const cur = valueRef.current;
+      const newValue = cur.slice(0, start) + converted + cur.slice(end);
+      setValueRef.current(newValue);
+      requestAnimationFrame(() => {
+        el.selectionStart = el.selectionEnd = start + converted.length;
+      });
     };
 
-    el.addEventListener("keydown", handleKeyDown);
-    return () => el.removeEventListener("keydown", handleKeyDown);
-  }, [ref, currentValue, setValue]);
+    el.addEventListener("keydown", onKeyDown);
+    el.addEventListener("keyup", onKeyUp);
+    el.addEventListener("paste", onPaste);
+    return () => {
+      el.removeEventListener("keydown", onKeyDown);
+      el.removeEventListener("keyup", onKeyUp);
+      el.removeEventListener("paste", onPaste);
+    };
+  }, [ref]);
 }
