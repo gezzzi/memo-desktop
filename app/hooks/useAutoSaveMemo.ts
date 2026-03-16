@@ -241,21 +241,29 @@ export function useAutoSaveMemo({ onSaved }: UseAutoSaveMemoOptions) {
       setBodyState(memo.body);
       setFolderState(memo.folder);
       setCreatedAt(memo.createdAt);
-      setPagesState(memo.pages ?? []);
+      // Auto-create page 2 if none exist
+      let pages = memo.pages ?? [];
+      let needsSave = false;
+      if (pages.length === 0) {
+        pages = [{ id: globalThis.crypto.randomUUID(), title: "", body: "" }];
+        needsSave = true;
+      }
+      setPagesState(pages);
       titleRef.current = memo.title;
       bodyRef.current = memo.body;
       folderRef.current = memo.folder;
-      pagesRef.current = memo.pages ?? [];
+      pagesRef.current = pages;
       setSelectedId(memo.id);
       selectedIdRef.current = memo.id;
       setIsNew(false);
       isNewRef.current = false;
-      dirtyRef.current = false;
+      dirtyRef.current = needsSave;
       clearSavedTimer();
       setSaveStatus("idle");
+      if (needsSave) scheduleSave();
       return memo;
     },
-    [flushSave, clearSavedTimer]
+    [flushSave, clearSavedTimer, scheduleSave]
   );
 
   // Create a new memo
@@ -267,11 +275,12 @@ export function useAutoSaveMemo({ onSaved }: UseAutoSaveMemoOptions) {
       setBodyState("");
       setFolderState(folderPath);
       setCreatedAt("");
-      setPagesState([]);
+      const defaultPage = [{ id: globalThis.crypto.randomUUID(), title: "", body: "" }];
+      setPagesState(defaultPage);
       titleRef.current = defaultTitle;
       bodyRef.current = "";
       folderRef.current = folderPath;
-      pagesRef.current = [];
+      pagesRef.current = defaultPage;
       setSelectedId(null);
       selectedIdRef.current = null;
       setIsNew(true);

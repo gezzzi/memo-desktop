@@ -114,9 +114,11 @@ export default function MemoList({
     });
   };
 
-  // Auto-expand parent folders when a memo is selected
+  // Auto-expand parent folders only when selectedId changes
+  const expandedForRef = useRef<string | null>(null);
   useEffect(() => {
-    if (!selectedId) return;
+    if (!selectedId || selectedId === expandedForRef.current) return;
+    expandedForRef.current = selectedId;
     const memo = memos.find((m) => m.id === selectedId);
     if (!memo?.folder) return;
     const segments = memo.folder.split("/");
